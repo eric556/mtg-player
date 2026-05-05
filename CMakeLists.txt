@@ -39,14 +39,13 @@ add_executable(mtg-sim
     src/zone.cpp
     src/game_state.cpp
     src/hand_window.cpp
-    src/hand_window_layout.cpp
     src/playmat_window.cpp
     src/card_requester.cpp
 )
 
 target_compile_features(mtg-sim PRIVATE cxx_std_20)
 target_link_libraries(mtg-sim PRIVATE SFML::Graphics cpr::cpr nlohmann_json::nlohmann_json)
-target_include_directories(mtg-sim PRIVATE src include)
+target_include_directories(mtg-sim PRIVATE src)
 
 # Make mtg-sim the default startup project in Visual Studio.
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT mtg-sim)

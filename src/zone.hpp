@@ -10,14 +10,21 @@ enum class Zone { DECK, HAND, BATTLEFIELD, GRAVEYARD, EXILE };
 struct PileViewer {
     bool                     visible = false;
     std::string              title;
-    std::vector<std::string> names;
+    std::vector<const Card*> cards; // Store pointers to cards for art access
+
+    float scroll_offset = 0.f;
+    int   hovered_idx   = -1;
 
     // Screen-space (virtual coords) rect for the overlay panel.
-    // Set this in the owning window's constructor before first use.
-    sf::FloatRect overlay{sf::Vector2f{80.f, 80.f}, sf::Vector2f{620.f, 490.f}};
+    sf::FloatRect overlay{sf::Vector2f{80.f, 80.f}, sf::Vector2f{620.f, 540.f}};
 
     void show(const std::string& t, const std::vector<Card>& pile);
-    void hide()                    { visible = false; }
-    bool handleClick(sf::Vector2f p);   // returns true, dismisses on any click
+    void hide();
+    bool handleClick(sf::Vector2f p);
+    void handleScroll(float delta);
+    void handleMouseMove(sf::Vector2f p);
     void draw(sf::RenderTarget& target, const sf::Font* font) const;
+
+private:
+    void drawScrollbar(sf::RenderTarget& target, float total_height) const;
 };

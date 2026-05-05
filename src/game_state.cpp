@@ -63,9 +63,13 @@ void GameState::playCard(int hand_idx, sf::Vector2f pos)
 {
     if (hand_idx < 0 || hand_idx >= static_cast<int>(hand.size())) return;
     Card c        = hand[hand_idx];
-    c.position    = pos;
+    c.target_position = pos;
+    c.position    = {1280.f / 2.f, 800.f / 2.f};
     c.selected    = false;
     c.tapped      = false;
+    c.scale       = 2.5f;
+    c.is_animating = true;
+    c.anim_timer   = 0.f;
     battlefield.push_back(c);
     hand.erase(hand.begin() + hand_idx);
 }

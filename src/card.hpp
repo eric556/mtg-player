@@ -15,6 +15,9 @@ struct Card {
     sf::Texture* art_texture = nullptr;
     sf::Texture* back_texture = nullptr; // For double-faced cards
     float        scale = 1.0f;
+    bool         is_animating = false;
+    sf::Vector2f target_position;
+    float        anim_timer = 0.f;
 };
 
 // font may be nullptr — text and counter badges are skipped in that case.

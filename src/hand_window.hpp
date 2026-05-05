@@ -1,13 +1,21 @@
 #pragma once
 #include "game_state.hpp"
 #include "zone.hpp"
-#include "clay_sfml_renderer.hpp"
 #include <SFML/Graphics.hpp>
-extern "C" {
-    #include <clay.h>
-}
 #include <string>
 #include <vector>
+
+// ── Simple clickable button (Pure SFML) ────────────────────────────────────
+
+struct Button {
+    sf::FloatRect bounds;
+    std::string   label;
+    bool          enabled = true;
+    bool          hovered = false;
+
+    bool contains(sf::Vector2f p) const { return enabled && bounds.contains(p); }
+    void draw(sf::RenderTarget& target, const sf::Font* font) const;
+};
 
 // ── Hand window (private — never share this) ───────────────────────────────
 
@@ -26,18 +34,19 @@ private:
     bool       font_loaded_ = false;
     int        selected_hand_idx_ = -1;
     PileViewer pile_viewer_;
-    
-    std::unique_ptr<ClaySFMLRenderer> clay_renderer_;
 
-    // Clickable regions for pile stacks.
-    sf::FloatRect deck_rect_, gy_rect_, exile_rect_;
+    // UI Buttons
+    Button btn_draw_, btn_shuffle_, btn_play_;
+
+    // Layout configuration (Virtual space)
+    static constexpr float WIN_W = 900.f;
+    static constexpr float WIN_H = 720.f;
 
     sf::Vector2f handCardCenter(int idx) const;
     int          handCardAt(sf::Vector2f p) const;
     void         onMousePress(sf::Vector2f p);
-    void         drawPileStack(sf::Vector2f center, int count,
+    void         onMouseMove(sf::Vector2f p);
+    void         drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count,
                                const std::string& label, sf::Color back_col);
-    
-    void setupClay();
-    void createClayLayout();
+    void         updateButtonLayout();
 };
