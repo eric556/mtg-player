@@ -13,8 +13,8 @@ struct Card {
     sf::Vector2f position;          // battlefield center position
     bool         selected   = false;
     sf::Texture* art_texture = nullptr;
-    // TODO: fetch https://api.scryfall.com/cards/named?fuzzy=<name>&format=image&version=art_crop
-    // TODO: cache fetched art in local cache.json keyed by card name
+    sf::Texture* back_texture = nullptr; // For double-faced cards
+    float        scale = 1.0f;
 };
 
 // font may be nullptr — text and counter badges are skipped in that case.

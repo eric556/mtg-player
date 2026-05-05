@@ -1,21 +1,13 @@
 #pragma once
 #include "game_state.hpp"
 #include "zone.hpp"
+#include "clay_sfml_renderer.hpp"
 #include <SFML/Graphics.hpp>
+extern "C" {
+    #include <clay.h>
+}
 #include <string>
 #include <vector>
-
-// ── Simple clickable button ────────────────────────────────────────────────
-
-struct Button {
-    sf::FloatRect bounds;
-    std::string   label;
-    bool          enabled = true;
-
-    bool contains(sf::Vector2f p) const { return enabled && bounds.contains(p); }
-    void draw(sf::RenderTarget& target, const sf::Font* font,
-              sf::Color fill = sf::Color(70, 70, 80)) const;
-};
 
 // ── Hand window (private — never share this) ───────────────────────────────
 
@@ -34,11 +26,8 @@ private:
     bool       font_loaded_ = false;
     int        selected_hand_idx_ = -1;
     PileViewer pile_viewer_;
-
-    // Buttons
-    Button btn_draw_, btn_shuffle_, btn_play_;
-    Button btn_life_plus_, btn_life_minus_;
-    Button btn_d6_, btn_d8_, btn_d20_;
+    
+    std::unique_ptr<ClaySFMLRenderer> clay_renderer_;
 
     // Clickable regions for pile stacks.
     sf::FloatRect deck_rect_, gy_rect_, exile_rect_;
@@ -48,4 +37,7 @@ private:
     void         onMousePress(sf::Vector2f p);
     void         drawPileStack(sf::Vector2f center, int count,
                                const std::string& label, sf::Color back_col);
+    
+    void setupClay();
+    void createClayLayout();
 };

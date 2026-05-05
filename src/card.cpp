@@ -10,6 +10,7 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
 {
     sf::Transform tf;
     tf.translate(center);
+    tf.scale({card.scale, card.scale});
     if (card.tapped) tf.rotate(sf::degrees(90.f));
     const sf::RenderStates states(tf);
 
@@ -18,19 +19,30 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
     body.setOrigin({CARD_W / 2.f, CARD_H / 2.f});
 
     if (card.face_down) {
-        body.setFillColor(sf::Color(30, 30, 120));
-        body.setOutlineColor(sf::Color(10, 10, 80));
-        body.setOutlineThickness(1.5f);
+        if (card.back_texture) {
+            body.setTexture(card.back_texture);
+            body.setFillColor(sf::Color::White);
+            body.setOutlineThickness(0.f);
+        } else {
+            body.setFillColor(sf::Color(30, 30, 120));
+            body.setOutlineColor(sf::Color(10, 10, 80));
+            body.setOutlineThickness(1.5f);
+        }
     } else {
         body.setFillColor(sf::Color(245, 235, 200));
         body.setOutlineColor(card.selected ? sf::Color::Yellow
                                            : sf::Color(50, 30, 10));
         body.setOutlineThickness(card.selected ? 3.f : 1.5f);
+        
+        if (card.art_texture) {
+            body.setTexture(card.art_texture);
+            body.setFillColor(sf::Color::White);
+        }
     }
     target.draw(body, states);
 
-    // ── Card name (face-up, font available) ───────────────────────────────
-    if (!card.face_down && !card.name.empty() && font) {
+    // ── Card name (face-up, font available, fallback only) ────────────────
+    if (!card.face_down && !card.name.empty() && font && !card.art_texture) {
         // Word-wrap name to fit inside the card width.
         std::vector<std::string> lines;
         {
@@ -52,7 +64,8 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
         }
 
         const float LINE_H  = 14.f;
-        const float start_y = -(static_cast<float>(lines.size()) * LINE_H) / 2.f;
+        const float total_h = static_cast<float>(lines.size()) * LINE_H;
+        const float start_y = -total_h / 2.f;
 
         for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
             sf::Text t(*font, lines[i], 11);
@@ -102,6 +115,7 @@ bool cardContains(const Card& card, sf::Vector2f point)
 {
     sf::Transform tf;
     tf.translate(card.position);
+    tf.scale({card.scale, card.scale});
     if (card.tapped) tf.rotate(sf::degrees(90.f));
     sf::Vector2f local = tf.getInverse().transformPoint(point);
     return local.x >= -CARD_W / 2.f && local.x <= CARD_W / 2.f &&

@@ -1,4 +1,5 @@
 #include "game_state.hpp"
+#include "card_requester.hpp"
 #include <fstream>
 #include <algorithm>
 #include <cctype>
@@ -10,39 +11,36 @@ bool GameState::loadDeck(const std::string& path)
 
     std::string line;
     while (std::getline(file, line)) {
-        // Trim leading whitespace.
+        // ... (existing parsing logic)
         size_t s = line.find_first_not_of(" \t\r\n");
         if (s == std::string::npos) continue;
         line = line.substr(s);
 
-        // Skip comment lines.
         if (line.size() >= 2 && line[0] == '/' && line[1] == '/') continue;
         if (line[0] == '#') continue;
 
-        // Parse leading integer quantity.
         size_t i = 0;
         while (i < line.size() && std::isdigit(static_cast<unsigned char>(line[i])))
             ++i;
         if (i == 0) continue;
         int qty = std::stoi(line.substr(0, i));
 
-        // Skip optional 'x' / 'X' separator (e.g. "4x Lightning Bolt").
         if (i < line.size() && (line[i] == 'x' || line[i] == 'X')) ++i;
-
-        // Skip whitespace between quantity and name.
         while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
 
         std::string name = line.substr(i);
-
-        // Trim trailing whitespace / carriage returns.
         size_t e = name.find_last_not_of(" \t\r\n");
         if (e == std::string::npos) continue;
         name = name.substr(0, e + 1);
         if (name.empty()) continue;
 
+        CardArt art = CardRequester::getInstance().getArt(name);
+
         for (int j = 0; j < qty; ++j) {
             Card c;
             c.name = name;
+            c.art_texture = art.front;
+            c.back_texture = art.back;
             deck.push_back(c);
         }
     }

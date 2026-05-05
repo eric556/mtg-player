@@ -50,5 +50,6 @@ private:
     void onMousePress(sf::Vector2f p, sf::Mouse::Button btn);
     void onMouseMove(sf::Vector2f p);
     void onMouseRelease();
+    void onMouseScroll(sf::Vector2f p, float delta);
     void applyContextAction(int item);
 };

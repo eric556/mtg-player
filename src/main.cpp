@@ -1,17 +1,23 @@
 #include "game_state.hpp"
 #include "hand_window.hpp"
 #include "playmat_window.hpp"
+#include "card_requester.hpp"
 #include <iostream>
 
 int main(int argc, char* argv[])
 {
     if (argc < 2) {
-        std::cerr << "Usage: mtg-sim <deck.txt>\n"
+        std::cerr << "Usage: mtg-sim <deck.txt> [cache_dir]\n"
                   << "  Deck format (one entry per line):\n"
                   << "    4 Lightning Bolt\n"
                   << "    1x Black Lotus\n"
                   << "    // comments are ignored\n";
         return 1;
+    }
+
+    if (argc >= 3) {
+        CardRequester::getInstance().setCacheDirectory(argv[2]);
+        std::cout << "Using cache directory: " << argv[2] << "\n";
     }
 
     GameState state;
@@ -26,11 +32,7 @@ int main(int argc, char* argv[])
     HandWindow    hand_win(state);
     PlaymatWindow playmat_win(state);
 
-    // Draw an opening hand of 7 (standard MTG rule).
-    for (int i = 0; i < 7 && !state.deck.empty(); ++i)
-        state.drawCard();
-
-    const sf::Time FRAME_TIME = sf::seconds(1.f / 60.f);
+    const sf::Time FRAME_TIME = sf::seconds(1.f / 120.f);
     sf::Clock frame_clock;
 
     while (hand_win.window.isOpen() && playmat_win.window.isOpen()) {

@@ -228,6 +228,17 @@ void PlaymatWindow::onMouseRelease()
     dragged_idx_ = -1;
 }
 
+void PlaymatWindow::onMouseScroll(sf::Vector2f p, float delta)
+{
+    int idx = cardAt(p);
+    if (idx >= 0) {
+        float factor = (delta > 0) ? 1.1f : 0.9f;
+        state_.battlefield[idx].scale *= factor;
+        // Clamp scale to reasonable bounds
+        state_.battlefield[idx].scale = std::max(0.2f, std::min(5.0f, state_.battlefield[idx].scale));
+    }
+}
+
 void PlaymatWindow::applyContextAction(int item)
 {
     int idx = ctx_menu_.target_idx;
@@ -249,6 +260,9 @@ void PlaymatWindow::handleEvent(const sf::Event& e)
     } else if (const auto* mm = e.getIf<sf::Event::MouseMoved>()) {
         auto p = window.mapPixelToCoords(mm->position);
         onMouseMove(p);
+    } else if (const auto* ms = e.getIf<sf::Event::MouseWheelScrolled>()) {
+        auto p = window.mapPixelToCoords(ms->position);
+        onMouseScroll(p, ms->delta);
     } else if (e.is<sf::Event::MouseButtonReleased>()) {
         onMouseRelease();
     } else if (e.is<sf::Event::Resized>()) {
