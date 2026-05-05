@@ -1,5 +1,6 @@
 #pragma once
 #include "game_state.hpp"
+#include "zone.hpp"
 #include <SFML/Graphics.hpp>
 
 // ── Context menu shown on right-click ──────────────────────────────────────
@@ -13,7 +14,6 @@ struct ContextMenu {
     void hide()                        { visible = false; target_idx = -1; }
 
     int  hitTest(sf::Vector2f p) const;
-    // font may be nullptr — menu is not drawn in that case.
     void draw(sf::RenderTarget& target, const sf::Font* font) const;
 };
 
@@ -29,14 +29,19 @@ public:
     void render();
 
 private:
-    GameState&              state_;
-    sf::Font font_;
-    bool     font_loaded_ = false;
-    ContextMenu             ctx_menu_;
+    GameState& state_;
+    sf::Font   font_;
+    bool       font_loaded_ = false;
+    ContextMenu ctx_menu_;
+
+    // Graveyard and exile viewers visible on the shared window.
+    PileViewer gy_viewer_;
+    PileViewer exile_viewer_;
+    sf::FloatRect gy_rect_;
+    sf::FloatRect exile_rect_;
 
     int          dragged_idx_    = -1;
     sf::Vector2f drag_offset_;
-
     int          last_click_idx_ = -1;
     sf::Clock    dbl_click_clock_;
 

@@ -1,0 +1,23 @@
+// Sample deck for mtg-sim testing
+// Format: <count> <name>  OR  <count>x <name>
+
+// Creatures
+4 Llanowar Elves
+4 Elvish Mystic
+3 Elvish Archdruid
+2 Ezuri, Renegade Leader
+2 Thornbow Archer
+2 Dwynen, Gilt-Leaf Daen
+1 Craterhoof Behemoth
+
+// Spells
+4x Collected Company
+3x Chord of Calling
+2x Naturalize
+2x Giant Growth
+
+// Lands
+20 Forest
+2x Nykthos, Shrine to Nyx
+2x Cavern of Souls
+1 Pendelhaven

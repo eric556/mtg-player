@@ -1,0 +1,76 @@
+1 Aether Channeler
+1 Anticausal Vestige
+1 Artful Dodge
+1 Ashling, Rekindled
+1 Beyeen Veil
+1 Cackling Counterpart
+1 Cascade Bluffs
+1 Charming Scoundrel
+1 Cloak of Feathers
+1 Cloud of Faeries
+1 Curiosity Crafter
+1 Defy Gravity
+1 Emrakul's Messenger
+1 Enter the Enigma
+1 Expedite
+1 Fading Hope
+1 Fated Infatuation
+1 Ferrous Lake
+1 Frostboil Snarl
+1 Fury
+1 Gemcutter Buccaneer
+1 Grabby Giant
+1 Impolite Entrance
+1 Inspired Skypainter
+1 Into the Flood Maw
+14 Island
+1 Jwari Disruption
+1 Leap
+1 Lindblum, Industrial Regency
+1 Looter il-Kor
+1 Marang River Regent
+1 Mercurial Spelldancer
+1 Mirage Mockery
+1 Moria Marauder
+13 Mountain
+1 Mulldrifter
+1 Octopus Form
+1 Ogre Battledriver
+1 Parapet Thrasher
+1 Pinnacle Monk
+1 Port Razer
+1 Possibility Technician
+1 Professional Face-Breaker
+1 Prosperous Thief
+1 Pyrogoyf
+1 Quasiduplicate
+1 Rose Room Treasurer
+1 Run Away Together
+1 Rush of Inspiration
+1 Sakashima's Will
+1 Sanar, Unfinished Genius
+1 Seafloor Oracle
+1 See Double
+1 Shadow Rift
+1 Shivan Reef
+1 Shore Up
+1 Shoreline Looter
+1 Silent Hallcreeper
+1 Silundi Vision
+1 Slip Through Space
+1 Snapback
+1 Spikefield Hazard
+1 Starwinder
+1 Stern Dismissal
+1 Stormcarved Coast
+1 Strike It Rich
+1 Subterfuge
+1 Sulfur Falls
+1 Trial of Agony
+1 Tzaangor Shaman
+1 Vesuvan Duplimancy
+1 Watcher for Tomorrow
+1 Wharf Infiltrator
+1 You See a Guard Approach
+
+1 Muddle, the Ever-Changing

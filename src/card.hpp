@@ -2,8 +2,8 @@
 #include <string>
 #include <SFML/Graphics.hpp>
 
-constexpr float CARD_W = 80.f;
-constexpr float CARD_H = 112.f;
+constexpr float CARD_W = 100.f;
+constexpr float CARD_H = 140.f;
 
 struct Card {
     std::string  name;

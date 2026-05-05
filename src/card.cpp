@@ -34,14 +34,14 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
         // Word-wrap name to fit inside the card width.
         std::vector<std::string> lines;
         {
-            sf::Text measure(*font, "", 9);
+            sf::Text measure(*font, "", 11);
             std::istringstream iss(card.name);
             std::string word, line;
             while (iss >> word) {
                 std::string candidate = line.empty() ? word : (line + ' ' + word);
                 measure.setString(candidate);
                 if (!line.empty() &&
-                    measure.getLocalBounds().size.x > CARD_W - 8.f) {
+                    measure.getLocalBounds().size.x > CARD_W - 10.f) {
                     lines.push_back(line);
                     line = word;
                 } else {
@@ -51,11 +51,11 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
             if (!line.empty()) lines.push_back(line);
         }
 
-        const float LINE_H  = 11.f;
+        const float LINE_H  = 14.f;
         const float start_y = -(static_cast<float>(lines.size()) * LINE_H) / 2.f;
 
         for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
-            sf::Text t(*font, lines[i], 9);
+            sf::Text t(*font, lines[i], 11);
             t.setFillColor(sf::Color(20, 10, 0));
             sf::FloatRect lb = t.getLocalBounds();
             t.setOrigin({lb.position.x + lb.size.x / 2.f, lb.position.y});
