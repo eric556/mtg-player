@@ -1,0 +1,109 @@
+#include "card.hpp"
+#include <sstream>
+#include <vector>
+
+// All geometry is in card-local space (origin = card center).
+// A single sf::Transform positions + optionally rotates the card,
+// so tapped cards and their badges/text rotate together for free.
+static void drawCardImpl(sf::RenderTarget& target, const Card& card,
+                         const sf::Font* font, sf::Vector2f center)
+{
+    sf::Transform tf;
+    tf.translate(center);
+    if (card.tapped) tf.rotate(sf::degrees(90.f));
+    const sf::RenderStates states(tf);
+
+    // ── Card body ──────────────────────────────────────────────────────────
+    sf::RectangleShape body({CARD_W, CARD_H});
+    body.setOrigin({CARD_W / 2.f, CARD_H / 2.f});
+
+    if (card.face_down) {
+        body.setFillColor(sf::Color(30, 30, 120));
+        body.setOutlineColor(sf::Color(10, 10, 80));
+        body.setOutlineThickness(1.5f);
+    } else {
+        body.setFillColor(sf::Color(245, 235, 200));
+        body.setOutlineColor(card.selected ? sf::Color::Yellow
+                                           : sf::Color(50, 30, 10));
+        body.setOutlineThickness(card.selected ? 3.f : 1.5f);
+    }
+    target.draw(body, states);
+
+    // ── Card name (face-up, font available) ───────────────────────────────
+    if (!card.face_down && !card.name.empty() && font) {
+        // Word-wrap name to fit inside the card width.
+        std::vector<std::string> lines;
+        {
+            sf::Text measure(*font, "", 9);
+            std::istringstream iss(card.name);
+            std::string word, line;
+            while (iss >> word) {
+                std::string candidate = line.empty() ? word : (line + ' ' + word);
+                measure.setString(candidate);
+                if (!line.empty() &&
+                    measure.getLocalBounds().size.x > CARD_W - 8.f) {
+                    lines.push_back(line);
+                    line = word;
+                } else {
+                    line = candidate;
+                }
+            }
+            if (!line.empty()) lines.push_back(line);
+        }
+
+        const float LINE_H  = 11.f;
+        const float start_y = -(static_cast<float>(lines.size()) * LINE_H) / 2.f;
+
+        for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+            sf::Text t(*font, lines[i], 9);
+            t.setFillColor(sf::Color(20, 10, 0));
+            sf::FloatRect lb = t.getLocalBounds();
+            t.setOrigin({lb.position.x + lb.size.x / 2.f, lb.position.y});
+            t.setPosition({0.f, start_y + i * LINE_H});
+            target.draw(t, states);
+        }
+    }
+
+    // ── Counter badge (top-right corner, local space) ──────────────────────
+    if (card.counters != 0) {
+        constexpr float R = 9.f;
+        sf::CircleShape badge(R);
+        badge.setOrigin({R, R});
+        badge.setPosition({CARD_W / 2.f - R - 2.f, -CARD_H / 2.f + R + 2.f});
+        badge.setFillColor(sf::Color(40, 120, 40));
+        badge.setOutlineColor(sf::Color::White);
+        badge.setOutlineThickness(1.f);
+        target.draw(badge, states);
+
+        if (font) {
+            sf::Text cnt(*font, std::to_string(card.counters), 10);
+            cnt.setFillColor(sf::Color::White);
+            sf::FloatRect lb = cnt.getLocalBounds();
+            cnt.setOrigin({lb.position.x + lb.size.x / 2.f,
+                           lb.position.y + lb.size.y / 2.f});
+            cnt.setPosition({CARD_W / 2.f - R - 2.f, -CARD_H / 2.f + R + 2.f});
+            target.draw(cnt, states);
+        }
+    }
+}
+
+void drawCard(sf::RenderTarget& target, const Card& card,
+              const sf::Font* font, sf::Vector2f center)
+{
+    drawCardImpl(target, card, font, center);
+}
+
+void drawCard(sf::RenderTarget& target, const Card& card, const sf::Font* font)
+{
+    drawCardImpl(target, card, font, card.position);
+}
+
+bool cardContains(const Card& card, sf::Vector2f point)
+{
+    sf::Transform tf;
+    tf.translate(card.position);
+    if (card.tapped) tf.rotate(sf::degrees(90.f));
+    sf::Vector2f local = tf.getInverse().transformPoint(point);
+    return local.x >= -CARD_W / 2.f && local.x <= CARD_W / 2.f &&
+           local.y >= -CARD_H / 2.f && local.y <= CARD_H / 2.f;
+}
