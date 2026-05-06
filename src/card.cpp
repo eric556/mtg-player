@@ -1,20 +1,24 @@
 #include "card.hpp"
 #include <sstream>
 #include <vector>
+#include <cmath>
 
+// ── Internal drawing implementation ────────────────────────────────────────
 // All geometry is in card-local space (origin = card center).
-// A single sf::Transform positions + optionally rotates the card,
-// so tapped cards and their badges/text rotate together for free.
+// A single sf::Transform handles position, scale, and tap/custom rotation,
+// so counter badges and text automatically rotate with the card body.
+
 static void drawCardImpl(sf::RenderTarget& target, const Card& card,
                          const sf::Font* font, sf::Vector2f center)
 {
     sf::Transform tf;
     tf.translate(center);
     tf.scale({card.scale, card.scale});
-    if (card.tapped) tf.rotate(sf::degrees(90.f));
+    if (card.tapped)  tf.rotate(sf::degrees(90.f));
+    tf.rotate(sf::degrees(card.rotation));
     const sf::RenderStates states(tf);
 
-    // ── Card body ──────────────────────────────────────────────────────────
+    // ── Card body ─────────────────────────────────────────────────────────
     sf::RectangleShape body({CARD_W, CARD_H});
     body.setOrigin({CARD_W / 2.f, CARD_H / 2.f});
 
@@ -33,7 +37,6 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
         body.setOutlineColor(card.selected ? sf::Color::Yellow
                                            : sf::Color(50, 30, 10));
         body.setOutlineThickness(card.selected ? 3.f : 1.5f);
-        
         if (card.art_texture) {
             body.setTexture(card.art_texture);
             body.setFillColor(sf::Color::White);
@@ -41,9 +44,8 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
     }
     target.draw(body, states);
 
-    // ── Card name (face-up, font available, fallback only) ────────────────
+    // ── Card name (face-up, no art, font available) ───────────────────────
     if (!card.face_down && !card.name.empty() && font && !card.art_texture) {
-        // Word-wrap name to fit inside the card width.
         std::vector<std::string> lines;
         {
             sf::Text measure(*font, "", 11);
@@ -71,13 +73,14 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
             sf::Text t(*font, lines[i], 11);
             t.setFillColor(sf::Color(20, 10, 0));
             sf::FloatRect lb = t.getLocalBounds();
-            t.setOrigin({lb.position.x + lb.size.x / 2.f, lb.position.y});
-            t.setPosition({0.f, start_y + i * LINE_H});
+            t.setOrigin({std::round(lb.position.x + lb.size.x / 2.f),
+                         std::round(lb.position.y)});
+            t.setPosition({0.f, std::round(start_y + i * LINE_H)});
             target.draw(t, states);
         }
     }
 
-    // ── Counter badge (top-right corner, local space) ──────────────────────
+    // ── Counter badge (top-right corner) ──────────────────────────────────
     if (card.counters != 0) {
         constexpr float R = 9.f;
         sf::CircleShape badge(R);
@@ -92,31 +95,34 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
             sf::Text cnt(*font, std::to_string(card.counters), 10);
             cnt.setFillColor(sf::Color::White);
             sf::FloatRect lb = cnt.getLocalBounds();
-            cnt.setOrigin({lb.position.x + lb.size.x / 2.f,
-                           lb.position.y + lb.size.y / 2.f});
-            cnt.setPosition({CARD_W / 2.f - R - 2.f, -CARD_H / 2.f + R + 2.f});
+            cnt.setOrigin({std::round(lb.position.x + lb.size.x / 2.f),
+                           std::round(lb.position.y + lb.size.y / 2.f)});
+            cnt.setPosition({std::round(CARD_W / 2.f - R - 2.f),
+                             std::round(-CARD_H / 2.f + R + 2.f)});
             target.draw(cnt, states);
         }
     }
 }
 
-void drawCard(sf::RenderTarget& target, const Card& card,
-              const sf::Font* font, sf::Vector2f center)
+// ── Card member function implementations ───────────────────────────────────
+
+void Card::draw(sf::RenderTarget& target, const sf::Font* font,
+                sf::Vector2f center) const
 {
-    drawCardImpl(target, card, font, center);
+    drawCardImpl(target, *this, font, center);
 }
 
-void drawCard(sf::RenderTarget& target, const Card& card, const sf::Font* font)
+void Card::draw(sf::RenderTarget& target, const sf::Font* font) const
 {
-    drawCardImpl(target, card, font, card.position);
+    drawCardImpl(target, *this, font, position);
 }
 
-bool cardContains(const Card& card, sf::Vector2f point)
+bool Card::contains(sf::Vector2f point) const
 {
     sf::Transform tf;
-    tf.translate(card.position);
-    tf.scale({card.scale, card.scale});
-    if (card.tapped) tf.rotate(sf::degrees(90.f));
+    tf.translate(position);
+    tf.scale({scale, scale});
+    if (tapped) tf.rotate(sf::degrees(90.f));
     sf::Vector2f local = tf.getInverse().transformPoint(point);
     return local.x >= -CARD_W / 2.f && local.x <= CARD_W / 2.f &&
            local.y >= -CARD_H / 2.f && local.y <= CARD_H / 2.f;

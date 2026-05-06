@@ -32,6 +32,9 @@ int main(int argc, char* argv[])
     HandWindow    hand_win(state);
     PlaymatWindow playmat_win(state);
 
+    state.hand_window_ptr = &hand_win.window;
+    state.playmat_window_ptr = &playmat_win.window;
+
     const sf::Time FRAME_TIME = sf::seconds(1.f / 120.f);
     sf::Clock frame_clock;
 

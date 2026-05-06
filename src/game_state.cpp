@@ -1,8 +1,11 @@
+#include <SFML/Graphics/RenderWindow.hpp>
 #include "game_state.hpp"
 #include "card_requester.hpp"
 #include <fstream>
 #include <algorithm>
 #include <cctype>
+
+// ── Deck loading ───────────────────────────────────────────────────────────
 
 bool GameState::loadDeck(const std::string& path)
 {
@@ -11,17 +14,14 @@ bool GameState::loadDeck(const std::string& path)
 
     std::string line;
     while (std::getline(file, line)) {
-        // ... (existing parsing logic)
         size_t s = line.find_first_not_of(" \t\r\n");
         if (s == std::string::npos) continue;
         line = line.substr(s);
-
         if (line.size() >= 2 && line[0] == '/' && line[1] == '/') continue;
         if (line[0] == '#') continue;
 
         size_t i = 0;
-        while (i < line.size() && std::isdigit(static_cast<unsigned char>(line[i])))
-            ++i;
+        while (i < line.size() && std::isdigit(static_cast<unsigned char>(line[i]))) ++i;
         if (i == 0) continue;
         int qty = std::stoi(line.substr(0, i));
 
@@ -35,11 +35,10 @@ bool GameState::loadDeck(const std::string& path)
         if (name.empty()) continue;
 
         CardArt art = CardRequester::getInstance().getArt(name);
-
         for (int j = 0; j < qty; ++j) {
             Card c;
             c.name = name;
-            c.art_texture = art.front;
+            c.art_texture  = art.front;
             c.back_texture = art.back;
             deck.push_back(c);
         }
@@ -47,51 +46,77 @@ bool GameState::loadDeck(const std::string& path)
     return !deck.empty();
 }
 
-void GameState::drawCard()
-{
-    if (deck.empty()) return;
-    hand.push_back(deck.back());
-    deck.pop_back();
-}
+// ── Core deck operations ────────────────────────────────────────────────────
 
 void GameState::shuffleDeck()
 {
     std::shuffle(deck.begin(), deck.end(), rng_);
 }
 
-void GameState::playCard(int hand_idx, sf::Vector2f pos)
+void GameState::drawCard()
+{
+    if (deck.empty()) return;
+    Card c = deck.back();
+    c.position    = {65.f, 160.f};  // deck pile position in HandWindow
+    c.is_animating = true;
+    c.anim_timer   = 0.f;
+    hand.push_back(c);
+    deck.pop_back();
+}
+
+// ── Play from hand (keeps cross-window animation) ──────────────────────────
+
+void GameState::playCard(int hand_idx, sf::Vector2f pos, sf::Vector2f start_pos)
 {
     if (hand_idx < 0 || hand_idx >= static_cast<int>(hand.size())) return;
     Card c        = hand[hand_idx];
     c.target_position = pos;
-    c.position    = {1280.f / 2.f, 800.f / 2.f};
+    c.position    = start_pos;
     c.selected    = false;
     c.tapped      = false;
-    c.scale       = 2.5f;
-    c.is_animating = true;
+    c.scale       = 1.0f;
+    c.is_animating = false;
     c.anim_timer   = 0.f;
+
+    if (hand_window_ptr && playmat_window_ptr) {
+        c.start_desktop_pos = hand_window_ptr->getPosition() + hand_window_ptr->mapCoordsToPixel(start_pos);
+        sf::Vector2f center = {1280.f / 2.f, 800.f / 2.f};
+        c.end_desktop_pos   = playmat_window_ptr->getPosition() + playmat_window_ptr->mapCoordsToPixel(center);
+        c.is_flying_cross_window = true;
+    } else {
+        c.is_animating = true;
+    }
+
     battlefield.push_back(c);
     hand.erase(hand.begin() + hand_idx);
 }
 
-void GameState::sendToGraveyard(int bf_idx)
+std::vector<Card>& GameState::zoneVec(Zone z)
 {
-    if (bf_idx < 0 || bf_idx >= static_cast<int>(battlefield.size())) return;
-    Card c     = battlefield[bf_idx];
-    c.tapped   = false;
-    c.selected = false;
-    graveyard.push_back(c);
-    battlefield.erase(battlefield.begin() + bf_idx);
+    switch (z) {
+        case Zone::DECK:        return deck;
+        case Zone::HAND:        return hand;
+        case Zone::BATTLEFIELD: return battlefield;
+        case Zone::GRAVEYARD:   return graveyard;
+        case Zone::EXILE:       return exile;
+    }
+    return deck; // unreachable
 }
 
-void GameState::sendToExile(int bf_idx)
+void GameState::moveCard(Zone from, int idx, Zone to, DeckPos deck_pos)
 {
-    if (bf_idx < 0 || bf_idx >= static_cast<int>(battlefield.size())) return;
-    Card c     = battlefield[bf_idx];
-    c.tapped   = false;
-    c.selected = false;
-    exile.push_back(c);
-    battlefield.erase(battlefield.begin() + bf_idx);
+    auto& src = zoneVec(from);
+    if (idx < 0 || idx >= static_cast<int>(src.size())) return;
+
+    Card c = src[idx];
+    src.erase(src.begin() + idx);
+    c.resetState();
+
+    auto& dst = zoneVec(to);
+    if (to == Zone::DECK && deck_pos == DeckPos::BOTTOM)
+        dst.insert(dst.begin(), c);
+    else
+        dst.push_back(c);
 }
 
 int GameState::rollDice(int sides)
@@ -99,4 +124,21 @@ int GameState::rollDice(int sides)
     std::uniform_int_distribution<int> dist(1, sides);
     dice_result = dist(rng_);
     return dice_result;
+}
+
+void GameState::resetAll()
+{
+    auto collect = [&](std::vector<Card>& zone) {
+        for (auto& c : zone) {
+            c.resetState();
+            deck.push_back(c);
+        }
+        zone.clear();
+    };
+
+    collect(hand);
+    collect(battlefield);
+    collect(graveyard);
+    collect(exile);
+    shuffleDeck();
 }

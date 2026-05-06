@@ -4,7 +4,12 @@
 #include <string>
 #include <random>
 
+namespace sf { class RenderWindow; }
+
 struct GameState {
+    sf::RenderWindow* hand_window_ptr    = nullptr;
+    sf::RenderWindow* playmat_window_ptr = nullptr;
+
     std::vector<Card> deck;
     std::vector<Card> hand;
     std::vector<Card> battlefield;
@@ -14,27 +19,19 @@ struct GameState {
     int life_total  = 20;
     int dice_result = 0;
 
-    // Returns false if the file couldn't be opened or contained no cards.
     bool loadDeck(const std::string& path);
 
-    void drawCard();                                // top of deck → hand
     void shuffleDeck();
-    void playCard(int hand_idx, sf::Vector2f pos);  // hand → battlefield
-    void sendToGraveyard(int bf_idx);               // battlefield → graveyard
-    void sendToExile(int bf_idx);                   // battlefield → exile
-    int  rollDice(int sides);                       // sets dice_result and returns it
+    void drawCard();
+    void resetAll();
 
-    void resetAll();                                // return every card to deck and reshuffle
+    void playCard(int hand_idx, sf::Vector2f pos, sf::Vector2f start_pos);
 
-    // Move a card to the bottom of the deck (deck[0], drawn last).
-    void battlefieldToBottomOfDeck(int bf_idx);
-    void graveyardToBottomOfDeck(int gy_idx);
-    void exileToBottomOfDeck(int exile_idx);
+    void moveCard(Zone from, int idx, Zone to, DeckPos deck_pos = DeckPos::TOP);
 
-    // Play directly from a non-hand zone onto the battlefield.
-    void playFromGraveyard(int gy_idx, sf::Vector2f pos);
-    void playFromExile(int exile_idx, sf::Vector2f pos);
+    int rollDice(int sides);
 
 private:
+    std::vector<Card>& zoneVec(Zone z);
     std::mt19937 rng_{std::random_device{}()};
 };

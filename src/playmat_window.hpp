@@ -1,21 +1,7 @@
 #pragma once
 #include "game_state.hpp"
-#include "zone.hpp"
+#include "ui.hpp"
 #include <SFML/Graphics.hpp>
-
-// ── Context menu shown on right-click ──────────────────────────────────────
-
-struct ContextMenu {
-    bool         visible    = false;
-    sf::Vector2f pos;
-    int          target_idx = -1;
-
-    void show(sf::Vector2f p, int idx) { pos = p; target_idx = idx; visible = true; }
-    void hide()                        { visible = false; target_idx = -1; }
-
-    int  hitTest(sf::Vector2f p) const;
-    void draw(sf::RenderTarget& target, const sf::Font* font) const;
-};
 
 // ── Playmat window (the public, stream-shared window) ──────────────────────
 
@@ -32,7 +18,8 @@ private:
     GameState& state_;
     sf::Font   font_;
     bool       font_loaded_ = false;
-    ContextMenu ctx_menu_;
+    ContextMenu ctx_menu_;   // right-click: zone actions
+    ContextMenu z_menu_;     // shift+right-click: z-depth ordering
 
     // Graveyard and exile viewers visible on the shared window.
     PileViewer gy_viewer_;
@@ -47,9 +34,10 @@ private:
 
     int cardAt(sf::Vector2f p) const;
 
-    void onMousePress(sf::Vector2f p, sf::Mouse::Button btn);
+    void onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift);
     void onMouseMove(sf::Vector2f p);
     void onMouseRelease();
     void onMouseScroll(sf::Vector2f p, float delta);
     void applyContextAction(int item);
+    void applyZAction(int item);
 };

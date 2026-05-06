@@ -36,7 +36,7 @@ FetchContent_MakeAvailable(SFML cpr json)
 add_executable(mtg-sim
     src/main.cpp
     src/card.cpp
-    src/zone.cpp
+    src/ui.cpp
     src/game_state.cpp
     src/hand_window.cpp
     src/playmat_window.cpp

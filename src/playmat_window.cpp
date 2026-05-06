@@ -21,48 +21,33 @@ static void updateView(sf::RenderWindow& win)
         {static_cast<float>(sz.x), static_cast<float>(sz.y)})));
 }
 
-// ── ContextMenu ────────────────────────────────────────────────────────────
-
-static constexpr float MENU_W = 190.f;
-static constexpr float ITEM_H = 23.f;
-
-static const std::array<const char*, 5> CTX_ITEMS = {
+// Main right-click menu (zone actions + card state)
+enum CtxItem {
+    CTX_FLIP = 0, CTX_TO_HAND, CTX_TO_GY, CTX_TO_EXILE,
+    CTX_TO_DECK_TOP, CTX_TO_DECK_BOT,
+    CTX_ADD_CTR, CTX_REM_CTR,
+};
+static const std::vector<std::string> CTX_ITEMS = {
     "Flip face-down / up",
+    "Return to hand",
     "Send to graveyard",
     "Send to exile",
+    "To top of deck",
+    "To bottom of deck",
     "Add counter",
-    "Remove counter"
+    "Remove counter",
 };
 
-int ContextMenu::hitTest(sf::Vector2f p) const
-{
-    if (!visible) return -1;
-    for (int i = 0; i < static_cast<int>(CTX_ITEMS.size()); ++i) {
-        sf::FloatRect row({pos.x, pos.y + i * ITEM_H}, {MENU_W, ITEM_H});
-        if (row.contains(p)) return i;
-    }
-    return -1;
-}
-
-void ContextMenu::draw(sf::RenderTarget& target, const sf::Font* font) const
-{
-    if (!visible || !font) return;
-
-    const float total_h = CTX_ITEMS.size() * ITEM_H;
-    sf::RectangleShape bg({MENU_W, total_h});
-    bg.setPosition(pos);
-    bg.setFillColor(sf::Color(30, 30, 30, 235));
-    bg.setOutlineColor(sf::Color(180, 180, 180));
-    bg.setOutlineThickness(1.f);
-    target.draw(bg);
-
-    for (int i = 0; i < static_cast<int>(CTX_ITEMS.size()); ++i) {
-        sf::Text t(*font, CTX_ITEMS[i], 13);
-        t.setFillColor(sf::Color(230, 230, 230));
-        t.setPosition({pos.x + 8.f, pos.y + i * ITEM_H + 4.f});
-        target.draw(t);
-    }
-}
+// Shift+right-click menu (z-depth ordering only)
+enum ZCtxItem {
+    ZTX_TOP = 0, ZTX_BOT, ZTX_UP, ZTX_DOWN,
+};
+static const std::vector<std::string> Z_ITEMS = {
+    "Send to front",
+    "Send to back",
+    "Move up one",
+    "Move down one",
+};
 
 // ── Pile stack helper ──────────────────────────────────────────────────────
 
@@ -91,14 +76,14 @@ static void drawPileStack(sf::RenderWindow& win, const sf::Font* font,
     sf::Text cnt(*font, std::to_string(count), 14);
     cnt.setFillColor(sf::Color::White);
     sf::FloatRect lb = cnt.getLocalBounds();
-    cnt.setOrigin({lb.position.x + lb.size.x / 2.f, lb.position.y + lb.size.y / 2.f});
-    cnt.setPosition(center);
+    cnt.setOrigin({std::round(lb.position.x + lb.size.x / 2.f), std::round(lb.position.y + lb.size.y / 2.f)});
+    cnt.setPosition({std::round(center.x), std::round(center.y)});
     win.draw(cnt);
     sf::Text lbl(*font, label, 11);
     lbl.setFillColor(sf::Color(210, 210, 210, 220));
     sf::FloatRect llb = lbl.getLocalBounds();
-    lbl.setOrigin({llb.position.x + llb.size.x / 2.f, llb.position.y + llb.size.y});
-    lbl.setPosition({center.x, center.y - CARD_H / 2.f - 4.f});
+    lbl.setOrigin({std::round(llb.position.x + llb.size.x / 2.f), std::round(llb.position.y + llb.size.y)});
+    lbl.setPosition({std::round(center.x), std::round(center.y - CARD_H / 2.f - 4.f)});
     win.draw(lbl);
 }
 
@@ -131,28 +116,54 @@ PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
 
 int PlaymatWindow::cardAt(sf::Vector2f p) const {
     for (int i = static_cast<int>(state_.battlefield.size()) - 1; i >= 0; --i)
-        if (cardContains(state_.battlefield[i], p)) return i;
+        if (state_.battlefield[i].contains(p)) return i;
     return -1;
 }
 
-void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn) {
-    if (gy_viewer_.visible)    { gy_viewer_.handleClick(p);    return; }
-    if (exile_viewer_.visible) { exile_viewer_.handleClick(p); return; }
+void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift) {
+    // ── PileViewer actions ─────────────────────────────────────────────
+    if (gy_viewer_.visible) {
+        auto act = gy_viewer_.handleClick(p);
+        if (act.valid) {
+            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
+            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
+                state_.battlefield.back().position = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
+        }
+        return;
+    }
+    if (exile_viewer_.visible) {
+        auto act = exile_viewer_.handleClick(p);
+        if (act.valid) {
+            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
+            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
+                state_.battlefield.back().position = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
+        }
+        return;
+    }
     if (btn == sf::Mouse::Button::Right) {
-        if (ctx_menu_.visible) { ctx_menu_.hide(); return; }
+        ctx_menu_.hide(); z_menu_.hide();
         int idx = cardAt(p);
-        if (idx >= 0) ctx_menu_.show(p, idx);
+        if (idx < 0) return;
+        if (shift)
+            z_menu_.show(p, idx, Z_ITEMS);     // Shift+RClick → z-depth menu
+        else
+            ctx_menu_.show(p, idx, CTX_ITEMS); // RClick → zone/action menu
         return;
     }
     if (btn == sf::Mouse::Button::Left) {
+        // Close any open menu on left-click, applying the selected item first.
         if (ctx_menu_.visible) {
             int item = ctx_menu_.hitTest(p);
             if (item >= 0) applyContextAction(item);
-            ctx_menu_.hide();
-            return;
+            ctx_menu_.hide(); return;
         }
-        if (gy_rect_.contains(p) && !state_.graveyard.empty()) { gy_viewer_.show("Graveyard", state_.graveyard); return; }
-        if (exile_rect_.contains(p) && !state_.exile.empty()) { exile_viewer_.show("Exile", state_.exile); return; }
+        if (z_menu_.visible) {
+            int item = z_menu_.hitTest(p);
+            if (item >= 0) applyZAction(item);
+            z_menu_.hide(); return;
+        }
+        if (gy_rect_.contains(p) && !state_.graveyard.empty()) { gy_viewer_.show("Graveyard", state_.graveyard, Zone::GRAVEYARD); return; }
+        if (exile_rect_.contains(p) && !state_.exile.empty()) { exile_viewer_.show("Exile", state_.exile, Zone::EXILE); return; }
         int idx = cardAt(p);
         if (idx >= 0) {
             if (idx == last_click_idx_ && dbl_click_clock_.getElapsedTime().asSeconds() < 0.4f) {
@@ -189,21 +200,52 @@ void PlaymatWindow::applyContextAction(int item) {
     int idx = ctx_menu_.target_idx;
     if (idx < 0 || idx >= static_cast<int>(state_.battlefield.size())) return;
     switch (item) {
-        case 0: state_.battlefield[idx].face_down = !state_.battlefield[idx].face_down; break;
-        case 1: state_.sendToGraveyard(idx); break;
-        case 2: state_.sendToExile(idx);     break;
-        case 3: state_.battlefield[idx].counters++; break;
-        case 4: state_.battlefield[idx].counters--; break;
+        case CTX_FLIP:       state_.battlefield[idx].face_down = !state_.battlefield[idx].face_down; break;
+        case CTX_TO_HAND:    state_.moveCard(Zone::BATTLEFIELD, idx, Zone::HAND);                    break;
+        case CTX_TO_GY:      state_.moveCard(Zone::BATTLEFIELD, idx, Zone::GRAVEYARD);               break;
+        case CTX_TO_EXILE:   state_.moveCard(Zone::BATTLEFIELD, idx, Zone::EXILE);                   break;
+        case CTX_TO_DECK_TOP: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::TOP);     break;
+        case CTX_TO_DECK_BOT: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::BOTTOM);  break;
+        case CTX_ADD_CTR:    state_.battlefield[idx].counters++;                                     break;
+        case CTX_REM_CTR:    state_.battlefield[idx].counters--;                                     break;
+    }
+}
+
+void PlaymatWindow::applyZAction(int item) {
+    int idx = z_menu_.target_idx;
+    if (idx < 0 || idx >= static_cast<int>(state_.battlefield.size())) return;
+    switch (item) {
+        case ZTX_TOP: {
+            auto c = state_.battlefield[idx];
+            state_.battlefield.erase(state_.battlefield.begin() + idx);
+            state_.battlefield.push_back(c);
+            break;
+        }
+        case ZTX_BOT: {
+            auto c = state_.battlefield[idx];
+            state_.battlefield.erase(state_.battlefield.begin() + idx);
+            state_.battlefield.insert(state_.battlefield.begin(), c);
+            break;
+        }
+        case ZTX_UP:
+            if (idx < static_cast<int>(state_.battlefield.size()) - 1)
+                std::swap(state_.battlefield[idx], state_.battlefield[idx + 1]);
+            break;
+        case ZTX_DOWN:
+            if (idx > 0)
+                std::swap(state_.battlefield[idx], state_.battlefield[idx - 1]);
+            break;
     }
 }
 
 void PlaymatWindow::handleEvent(const sf::Event& e) {
     if (const auto* mb = e.getIf<sf::Event::MouseButtonPressed>()) {
-        auto p = window.mapPixelToCoords(mb->position);
-        onMousePress(p, mb->button);
+        auto p     = window.mapPixelToCoords(mb->position);
+        bool shift = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)
+                  || sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift);
+        onMousePress(p, mb->button, shift);
     } else if (const auto* mm = e.getIf<sf::Event::MouseMoved>()) {
-        auto p = window.mapPixelToCoords(mm->position);
-        onMouseMove(p);
+        onMouseMove(window.mapPixelToCoords(mm->position));
     } else if (const auto* ms = e.getIf<sf::Event::MouseWheelScrolled>()) {
         auto p = window.mapPixelToCoords(ms->position);
         if (ms->wheel == sf::Mouse::Wheel::Vertical) onMouseScroll(p, ms->delta);
@@ -228,27 +270,62 @@ void PlaymatWindow::render() {
     float dt = frame_clock.restart().asSeconds();
     
     for (auto& card : state_.battlefield) {
-        if (card.is_animating) {
+        if (card.is_flying_cross_window) {
             card.anim_timer += dt;
-            float stay_duration = 1.5f;
-            float anim_duration = 0.4f;
+            float duration = 0.6f; // Quick fly across screen
+            if (card.anim_timer >= duration) {
+                card.is_flying_cross_window = false;
+                card.rotation = 0.f;
+                // Transition to Phase 2 of old animation (hang in center)
+                card.is_animating = true;
+                card.anim_timer = 0.25f; // Starts right at the hang phase
+            } else {
+                float t = card.anim_timer / duration;
+                sf::Vector2i current_global = {
+                    (int)(card.start_desktop_pos.x + (card.end_desktop_pos.x - card.start_desktop_pos.x) * t),
+                    (int)(card.start_desktop_pos.y + (card.end_desktop_pos.y - card.start_desktop_pos.y) * t)
+                };
+                
+                sf::Vector2i local_pixel = current_global - window.getPosition();
+                card.position = window.mapPixelToCoords(local_pixel);
+                
+                float dx = (float)(card.end_desktop_pos.x - card.start_desktop_pos.x);
+                float dy = (float)(card.end_desktop_pos.y - card.start_desktop_pos.y);
+                float angle = std::atan2(dy, dx) * 180.f / 3.14159265f;
+                card.rotation = angle + 90.f; // point top of card in direction of travel
+            }
+        } else if (card.is_animating) {
+            card.anim_timer += dt;
+            
+            float fly_in_duration = 0.25f;
+            float hang_duration = 1.0f;
+            float settle_duration = 0.4f;
+            
+            sf::Vector2f center = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
+            sf::Vector2f bottom = {PLAYMAT_W / 2.f, PLAYMAT_H + 300.f};
 
-            if (card.anim_timer > stay_duration) {
-                float t = (card.anim_timer - stay_duration) / anim_duration;
+            if (card.anim_timer <= fly_in_duration) {
+                float t = card.anim_timer / fly_in_duration;
+                float ease = 1.0f - std::pow(1.0f - t, 3.0f);
+                card.position = bottom + (center - bottom) * ease;
+                card.scale = 4.0f + (2.5f - 4.0f) * ease;
+            }
+            else if (card.anim_timer <= fly_in_duration + hang_duration) {
+                card.position = center;
+                card.scale = 2.5f;
+            }
+            else {
+                float t = (card.anim_timer - fly_in_duration - hang_duration) / settle_duration;
                 if (t >= 1.0f) {
                     t = 1.0f;
                     card.is_animating = false;
                 }
-                
-                // ease out cubic for smoother settling
                 float ease = 1.0f - std::pow(1.0f - t, 3.0f);
-                
-                sf::Vector2f start_pos = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
-                card.position = start_pos + (card.target_position - start_pos) * ease;
+                card.position = center + (card.target_position - center) * ease;
                 card.scale = 2.5f + (1.0f - 2.5f) * ease;
             }
         }
-        drawCard(window, card, fp);
+        card.draw(window, fp);
     }
     drawPileStack(window, fp, {PM_GY_CX, PM_GY_CY}, static_cast<int>(state_.graveyard.size()), "GY", sf::Color(110, 45, 45, 210));
     drawPileStack(window, fp, {PM_EXILE_CX, PM_EXILE_CY}, static_cast<int>(state_.exile.size()), "EXILE", sf::Color(110, 80, 25, 210));
@@ -258,14 +335,15 @@ void PlaymatWindow::render() {
             sf::Text h(*fp, "click to view", 10);
             h.setFillColor(sf::Color(200, 200, 200, 180));
             sf::FloatRect lb = h.getLocalBounds();
-            h.setOrigin({lb.position.x + lb.size.x / 2.f, lb.position.y});
-            h.setPosition({cx, cy + CARD_H / 2.f + 4.f});
+            h.setOrigin({std::round(lb.position.x + lb.size.x / 2.f), std::round(lb.position.y)});
+            h.setPosition({std::round(cx), std::round(cy + CARD_H / 2.f + 4.f)});
             window.draw(h);
         };
         hint(PM_GY_CX, PM_GY_CY, !state_.graveyard.empty());
         hint(PM_EXILE_CX, PM_EXILE_CY, !state_.exile.empty());
     }
     ctx_menu_.draw(window, fp);
+    z_menu_.draw(window, fp);
     gy_viewer_.draw(window, fp);
     exile_viewer_.draw(window, fp);
     window.display();

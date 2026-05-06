@@ -1,21 +1,9 @@
 #pragma once
 #include "game_state.hpp"
-#include "zone.hpp"
+#include "ui.hpp"
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <vector>
-
-// ── Simple clickable button (Pure SFML) ────────────────────────────────────
-
-struct Button {
-    sf::FloatRect bounds;
-    std::string   label;
-    bool          enabled = true;
-    bool          hovered = false;
-
-    bool contains(sf::Vector2f p) const { return enabled && bounds.contains(p); }
-    void draw(sf::RenderTarget& target, const sf::Font* font) const;
-};
 
 // ── Hand window (private — never share this) ───────────────────────────────
 
@@ -34,9 +22,10 @@ private:
     bool       font_loaded_ = false;
     int        selected_hand_idx_ = -1;
     PileViewer pile_viewer_;
+    ContextMenu ctx_menu_;   // right-click on hand cards
 
     // UI Buttons
-    Button btn_draw_, btn_shuffle_, btn_play_;
+    Button btn_draw_, btn_shuffle_, btn_reset_, btn_search_, btn_play_;
 
     // Layout configuration (Virtual space)
     static constexpr float WIN_W = 900.f;
@@ -45,7 +34,9 @@ private:
     sf::Vector2f handCardCenter(int idx) const;
     int          handCardAt(sf::Vector2f p) const;
     void         onMousePress(sf::Vector2f p);
+    void         onMouseRightClick(sf::Vector2f p);
     void         onMouseMove(sf::Vector2f p);
+    void         applyHandContextAction(int item);
     void         drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count,
                                const std::string& label, sf::Color back_col);
     void         updateButtonLayout();

@@ -5,27 +5,52 @@
 constexpr float CARD_W = 100.f;
 constexpr float CARD_H = 140.f;
 
-struct Card {
+enum class Zone    { DECK, HAND, BATTLEFIELD, GRAVEYARD, EXILE };
+enum class DeckPos { TOP, BOTTOM };
+
+class Card {
+public:
+    // ── Data ──────────────────────────────────────────────────────────────
     std::string  name;
     bool         tapped     = false;
     bool         face_down  = false;
     int          counters   = 0;
-    sf::Vector2f position;          // battlefield center position
+    sf::Vector2f position;          // center of the card in world space
     bool         selected   = false;
-    sf::Texture* art_texture = nullptr;
-    sf::Texture* back_texture = nullptr; // For double-faced cards
-    float        scale = 1.0f;
-    bool         is_animating = false;
+    sf::Texture* art_texture  = nullptr;
+    sf::Texture* back_texture = nullptr;
+    float        scale      = 1.0f;
+
+    // Animation
+    bool         is_animating          = false;
     sf::Vector2f target_position;
-    float        anim_timer = 0.f;
+    float        anim_timer            = 0.f;
+    sf::Vector2i start_desktop_pos;
+    sf::Vector2i end_desktop_pos;
+    bool         is_flying_cross_window = false;
+    float        rotation              = 0.f;
+
+    // ── Methods ───────────────────────────────────────────────────────────
+
+    // Strips all transient state (tapped, counters, animations, etc.)
+    // leaving only identity data (name, textures).
+    void resetState() {
+        tapped = false; face_down = false; counters = 0; selected = false;
+        scale = 1.0f; rotation = 0.f;
+        is_animating = false; is_flying_cross_window = false; anim_timer = 0.f;
+        position = {}; target_position = {};
+        start_desktop_pos = {}; end_desktop_pos = {};
+    }
+
+    // Draw the card centered at `center` (ignores this->position).
+    void draw(sf::RenderTarget& target, const sf::Font* font,
+              sf::Vector2f center) const;
+
+    // Draw the card at this->position.
+    void draw(sf::RenderTarget& target, const sf::Font* font) const;
+
+    // Hit test — accounts for scale and 90° tap rotation.
+    bool contains(sf::Vector2f point) const;
 };
 
-// font may be nullptr — text and counter badges are skipped in that case.
-void drawCard(sf::RenderTarget& target, const Card& card,
-              const sf::Font* font, sf::Vector2f center);
 
-void drawCard(sf::RenderTarget& target, const Card& card,
-              const sf::Font* font);
-
-// Hit test — accounts for 90° rotation when tapped.
-bool cardContains(const Card& card, sf::Vector2f point);
