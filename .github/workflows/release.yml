@@ -63,17 +63,18 @@ jobs:
 
   release:
     needs: [build-windows, build-linux]
+    if: always() && (needs.build-windows.result == 'success' || needs.build-linux.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download available artifacts
         uses: actions/download-artifact@v4
+        with:
+          pattern: mtg-sim-*
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            mtg-sim-windows/mtg-sim.exe
-            mtg-sim-linux/mtg-sim
+          files: mtg-sim-*/*
           generate_release_notes: true
