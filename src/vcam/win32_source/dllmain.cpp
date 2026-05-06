@@ -5,9 +5,8 @@
 #include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
-#include <ks.h>
-#include <ksmedia.h>
 #include "guids.hpp"
+DEFINE_CLSID_MtgVCamSource()   // one definition per binary (DLL side)
 #include "media_source.hpp"
 #include <shlwapi.h>
 #include <string>
@@ -114,14 +113,15 @@ STDAPI DllRegisterServer() {
     hr = RegSetSZ(HKEY_CURRENT_USER, inproc.c_str(), L"ThreadingModel", L"Both");
     if (FAILED(hr)) return hr;
 
-    // Register in the camera category so Windows enumerates it
+    // Register in the camera categories so Windows enumerates it.
+    // Using literal strings to avoid pulling in <ks.h> / DDK headers.
     // KSCATEGORY_VIDEO_CAMERA = {E5323777-F976-4f5b-9B55-B94699C46E44}
     // KSCATEGORY_VIDEO        = {6994AD05-93EF-11D0-A3CC-00A0C9223196}
-    wchar_t videoCamStr[64] = {}, videoStr[64] = {};
-    StringFromGUID2(KSCATEGORY_VIDEO_CAMERA, videoCamStr, 64);
-    StringFromGUID2(KSCATEGORY_VIDEO,        videoStr,    64);
-
-    for (const wchar_t* cat : {videoCamStr, videoStr}) {
+    static const wchar_t* kCats[] = {
+        L"{E5323777-F976-4f5b-9B55-B94699C46E44}",
+        L"{6994AD05-93EF-11D0-A3CC-00A0C9223196}",
+    };
+    for (const wchar_t* cat : kCats) {
         std::wstring catKey = std::wstring(
             L"Software\\Classes\\CLSID\\") + cat + L"\\Instance\\" + clsidStr;
         hr = RegSetSZ(HKEY_CURRENT_USER, catKey.c_str(), nullptr, L"MTG Sim Virtual Camera");
@@ -139,12 +139,11 @@ STDAPI DllUnregisterServer() {
     wchar_t clsidStr[64] = {};
     StringFromGUID2(CLSID_MtgVCamSource, clsidStr, 64);
 
-    wchar_t videoCamStr[64] = {}, videoStr[64] = {};
-    StringFromGUID2(KSCATEGORY_VIDEO_CAMERA, videoCamStr, 64);
-    StringFromGUID2(KSCATEGORY_VIDEO,        videoStr,    64);
-
-    // Remove category registrations
-    for (const wchar_t* cat : {videoCamStr, videoStr}) {
+    static const wchar_t* kCats[] = {
+        L"{E5323777-F976-4f5b-9B55-B94699C46E44}",
+        L"{6994AD05-93EF-11D0-A3CC-00A0C9223196}",
+    };
+    for (const wchar_t* cat : kCats) {
         std::wstring catKey = std::wstring(
             L"Software\\Classes\\CLSID\\") + cat + L"\\Instance\\" + clsidStr;
         RegDeleteTreeW(HKEY_CURRENT_USER, catKey.c_str());

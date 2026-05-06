@@ -2,6 +2,7 @@
 #include "vcam_win32.hpp"
 #include "vcam_shared_mem.hpp"
 #include "win32_source/guids.hpp"
+DEFINE_CLSID_MtgVCamSource()   // one definition per binary (exe side)
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -158,7 +159,7 @@ bool VcamWin32::createVirtualCamera() {
 
     IMFVirtualCamera* vcam = nullptr;
     hr = MFCreateVirtualCamera(
-        MFVirtualCameraType_SoftwareDevice,
+        MFVirtualCameraType_SoftwareCameraSource,
         MFVirtualCameraLifetime_Session,
         MFVirtualCameraAccess_CurrentUser,
         L"MTG Sim",

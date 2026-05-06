@@ -104,14 +104,8 @@ HRESULT MtgVCamSource::BuildStreamDescriptor(IMFStreamDescriptor** ppSD) {
 IFACEMETHODIMP MtgVCamSource::QueryInterface(REFIID riid, void** ppv) {
     if (!ppv) return E_POINTER;
     if (riid == IID_IUnknown || riid == IID_IMFMediaEventGenerator ||
-        riid == IID_IMFMediaSource) {
-        *ppv = static_cast<IMFMediaSource*>(this);
-    } else if (riid == __uuidof(IMFMediaSourceEx)) {
+        riid == IID_IMFMediaSource || riid == __uuidof(IMFMediaSourceEx)) {
         *ppv = static_cast<IMFMediaSourceEx*>(this);
-    } else if (riid == __uuidof(IKsControl)) {
-        *ppv = static_cast<IKsControl*>(this);
-    } else if (riid == __uuidof(IMFGetService)) {
-        *ppv = static_cast<IMFGetService*>(this);
     } else {
         *ppv = nullptr;
         return E_NOINTERFACE;
@@ -228,36 +222,5 @@ IFACEMETHODIMP MtgVCamSource::SetD3DManager(IUnknown* /*pManager*/) {
     return S_OK; // GPU conversion not implemented; accept call gracefully
 }
 
-// ---------------------------------------------------------------------------
-// IKsControl  (camera property / control interface — required by Frame Server)
-// ---------------------------------------------------------------------------
-
-IFACEMETHODIMP MtgVCamSource::KsProperty(PKSPROPERTY prop, ULONG propLen,
-                                           LPVOID propData, ULONG dataLen, ULONG* bytesRet) {
-    // Return KSPROPERTY_TYPE_GET for the stream category so the camera appears
-    // in the system. Everything else is not supported.
-    if (bytesRet) *bytesRet = 0;
-    return E_NOTIMPL;
-}
-
-IFACEMETHODIMP MtgVCamSource::KsMethod(PKSMETHOD, ULONG, LPVOID, ULONG, ULONG* br) {
-    if (br) *br = 0;
-    return E_NOTIMPL;
-}
-
-IFACEMETHODIMP MtgVCamSource::KsEvent(PKSEVENT, ULONG, LPVOID, ULONG, ULONG* br) {
-    if (br) *br = 0;
-    return E_NOTIMPL;
-}
-
-// ---------------------------------------------------------------------------
-// IMFGetService
-// ---------------------------------------------------------------------------
-
-IFACEMETHODIMP MtgVCamSource::GetService(REFGUID /*guidService*/, REFIID /*riid*/,
-                                          LPVOID* ppvObject) {
-    if (ppvObject) *ppvObject = nullptr;
-    return MF_E_UNSUPPORTED_SERVICE;
-}
 
 #endif // _WIN32

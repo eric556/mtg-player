@@ -8,6 +8,7 @@
 #include <mfidl.h>
 #include <mferror.h>
 #include <wrl/client.h>
+#include <cstdint>
 
 using Microsoft::WRL::ComPtr;
 

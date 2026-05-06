@@ -7,20 +7,17 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mferror.h>
-#include <ks.h>
-#include <ksmedia.h>
 #include <wrl/client.h>
 
 using Microsoft::WRL::ComPtr;
 
 class MtgVCamStream;
 
-// IMFMediaSource + IMFMediaSourceEx + IKsControl + IMFGetService
+// IMFMediaSourceEx already inherits IMFMediaSource; do not list both.
+// IKsControl and IMFGetService return E_NOINTERFACE via QueryInterface —
+// the Frame Server does not strictly require them for IMFVirtualCamera.
 class MtgVCamSource final
-    : public IMFMediaSource
-    , public IMFMediaSourceEx
-    , public IKsControl
-    , public IMFGetService {
+    : public IMFMediaSourceEx {
 public:
     static HRESULT Create(MtgVCamSource** ppSource);
 
@@ -51,17 +48,6 @@ public:
     IFACEMETHODIMP GetStreamAttributes(DWORD dwStreamIdentifier,
                                        IMFAttributes** ppAttribs) override;
     IFACEMETHODIMP SetD3DManager(IUnknown* pManager) override;
-
-    // IKsControl
-    IFACEMETHODIMP KsProperty(PKSPROPERTY prop, ULONG propLen,
-                              LPVOID propData, ULONG dataLen, ULONG* bytesRet) override;
-    IFACEMETHODIMP KsMethod(PKSMETHOD method, ULONG methodLen,
-                            LPVOID methodData, ULONG dataLen, ULONG* bytesRet) override;
-    IFACEMETHODIMP KsEvent(PKSEVENT evt, ULONG evtLen,
-                           LPVOID evtData, ULONG dataLen, ULONG* bytesRet) override;
-
-    // IMFGetService
-    IFACEMETHODIMP GetService(REFGUID guidService, REFIID riid, LPVOID* ppvObject) override;
 
 private:
     MtgVCamSource() = default;

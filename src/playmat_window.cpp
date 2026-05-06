@@ -4,6 +4,10 @@
 #include <array>
 #include <algorithm>
 #include <SFML/OpenGL.hpp>
+// GL_BGRA is GL 1.2; not always in the platform gl.h stub
+#ifndef GL_BGRA
+#  define GL_BGRA 0x80E1
+#endif
 
 // Command zone sits in the top-left corner — left-anchored, so position is fixed.
 static constexpr float PM_CMD_CX = 65.f, PM_CMD_CY = 100.f;

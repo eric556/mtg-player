@@ -6,6 +6,7 @@
 // Pixel format: top-down BGRA, 4 bytes per pixel.
 // This matches MFVideoFormat_ARGB32 (positive stride) and ffmpeg's "bgra" pixel_format.
 
+#include <cstddef>
 #include <cstdint>
 
 static constexpr unsigned VCAM_SHM_MAX_W = 1920;

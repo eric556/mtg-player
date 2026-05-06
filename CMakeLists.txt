@@ -52,6 +52,8 @@ target_include_directories(mtg-sim PRIVATE src)
 
 if(WIN32)
     target_sources(mtg-sim PRIVATE src/vcam/vcam_win32.cpp)
+    # NTDDI_WIN10_CO (0x0A00000C) = Windows 11 21H2 — required for mfvirtualcamera.h
+    target_compile_definitions(mtg-sim PRIVATE NTDDI_VERSION=0x0A00000C WINVER=0x0A00000C _WIN32_WINNT=0x0A00000C)
     target_link_libraries(mtg-sim PRIVATE mfsensorgroup mfplat mfuuid ole32 oleaut32)
 
     # COM DLL: the in-process media source loaded by the Windows Frame Server
