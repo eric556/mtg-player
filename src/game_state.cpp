@@ -98,6 +98,29 @@ void GameState::playCard(int hand_idx, sf::Vector2f pos, sf::Vector2f start_pos)
     hand.erase(hand.begin() + hand_idx);
 }
 
+sf::Vector2i GameState::zoneDesktopCenter(Zone z) const {
+    auto toDesktop = [](sf::RenderWindow* win, sf::Vector2f local) -> sf::Vector2i {
+        if (!win) return {0, 0};
+        return win->getPosition() + sf::Vector2i(win->mapCoordsToPixel(local));
+    };
+    switch (z) {
+        case Zone::DECK:         return toDesktop(hand_window_ptr,    pos_zone_deck);
+        case Zone::HAND:         return toDesktop(hand_window_ptr,    pos_zone_hand);
+        case Zone::BATTLEFIELD:  return toDesktop(playmat_window_ptr, pos_zone_bf);
+        case Zone::GRAVEYARD:    return toDesktop(playmat_window_ptr, pos_zone_gy);
+        case Zone::EXILE:        return toDesktop(playmat_window_ptr, pos_zone_exile);
+        case Zone::COMMAND_ZONE: return toDesktop(playmat_window_ptr, pos_zone_cmd);
+        default:                 return {0, 0};
+    }
+}
+
+Card* GameState::lastInZone(Zone z, DeckPos dp) {
+    auto& v = zoneVec(z);
+    if (v.empty()) return nullptr;
+    if (z == Zone::DECK && dp == DeckPos::BOTTOM) return &v.front();
+    return &v.back();
+}
+
 std::vector<Card>& GameState::zoneVec(Zone z)
 {
     switch (z) {

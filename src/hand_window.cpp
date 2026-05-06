@@ -60,6 +60,9 @@ HandWindow::HandWindow(GameState& gs) : state_(gs) {
     float pv_y = 40.f;
     pile_viewer_.overlay = {{pv_x, pv_y}, {pv_w, pv_h}};
 
+    state_.pos_zone_deck = pos_deck_;
+    state_.pos_zone_hand = {w_ / 2.f, h_ - 130.f};
+
     updateView(window, ui_scale_);
 }
 
@@ -87,9 +90,20 @@ void HandWindow::onMousePress(sf::Vector2f p) {
     if (pile_viewer_.visible) {
         auto act = pile_viewer_.handleClick(p);
         if (act.valid) {
+            sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(pos_deck_));
+            sf::Vector2i dst = state_.zoneDesktopCenter(act.to);
             state_.moveCard(act.from, act.index, act.to, act.deck_pos);
-            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {640.f, 400.f};
+            if (Card* c = state_.lastInZone(act.to, act.deck_pos)) {
+                if (act.to == Zone::BATTLEFIELD) {
+                    c->target_position       = {640.f, 400.f};
+                    c->position              = pos_deck_;
+                }
+                c->is_flying_cross_window = true;
+                c->start_desktop_pos      = src;
+                c->end_desktop_pos        = dst;
+                c->anim_timer             = 0.f;
+                c->is_animating           = false;
+            }
         }
         return;
     }
@@ -158,11 +172,25 @@ void HandWindow::onMouseRightClick(sf::Vector2f p) {
 void HandWindow::applyHandContextAction(int item) {
     int idx = ctx_menu_.target_idx;
     if (idx < 0 || idx >= (int)state_.hand.size()) return;
+
+    sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(handCardCenter(idx)));
+    auto fly = [&](Card& c, Zone to) {
+        c.is_flying_cross_window = true;
+        c.start_desktop_pos      = src;
+        c.end_desktop_pos        = state_.zoneDesktopCenter(to);
+        c.anim_timer             = 0.f;
+        c.is_animating           = false;
+    };
+
     switch (item) {
-        case 0: state_.moveCard(Zone::HAND, idx, Zone::GRAVEYARD);              break;
-        case 1: state_.moveCard(Zone::HAND, idx, Zone::EXILE);                  break;
-        case 2: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::TOP);    break;
-        case 3: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM); break;
+        case 0: state_.moveCard(Zone::HAND, idx, Zone::GRAVEYARD);
+                if (auto* c = state_.lastInZone(Zone::GRAVEYARD)) fly(*c, Zone::GRAVEYARD); break;
+        case 1: state_.moveCard(Zone::HAND, idx, Zone::EXILE);
+                if (auto* c = state_.lastInZone(Zone::EXILE))     fly(*c, Zone::EXILE);     break;
+        case 2: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::TOP);
+                if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::TOP))    fly(*c, Zone::DECK); break;
+        case 3: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM);
+                if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::BOTTOM)) fly(*c, Zone::DECK); break;
     }
     selected_hand_idx_ = -1;
 }
@@ -303,8 +331,9 @@ void HandWindow::render() {
     static sf::Clock frame_clock;
     float dt = frame_clock.restart().asSeconds();
 
-    // Hand cards
+    // Hand cards (skip any that are mid-flight — rendered by the fly pass below)
     for (int i = 0; i < (int)state_.hand.size(); ++i) {
+        if (state_.hand[i].is_flying_cross_window) continue;
         sf::Vector2f center = handCardCenter(i);
         if (state_.hand[i].is_animating) {
             state_.hand[i].anim_timer += dt;
@@ -328,20 +357,26 @@ void HandWindow::render() {
         preview.draw(window, fp, {w_ / 2.f, h_ * 0.42f});
     }
 
-    // Cross-window flying cards
-    for (auto& card : state_.battlefield) {
-        if (card.is_flying_cross_window) {
-            float t = card.anim_timer / 0.6f;
-            if (t > 1.0f) t = 1.0f;
+    // Flying cards from all zones rendered in this window's viewport
+    auto renderFlyingZone = [&](const std::vector<Card>& zone) {
+        for (const auto& card : zone) {
+            if (!card.is_flying_cross_window) continue;
+            float t = std::min(1.f, card.anim_timer / 0.6f);
             sf::Vector2i cur = {
                 (int)(card.start_desktop_pos.x + (card.end_desktop_pos.x - card.start_desktop_pos.x) * t),
                 (int)(card.start_desktop_pos.y + (card.end_desktop_pos.y - card.start_desktop_pos.y) * t)
             };
-            Card cross = card;
-            cross.position = window.mapPixelToCoords(cur - window.getPosition());
-            cross.draw(window, fp);
+            Card ghost = card;
+            ghost.position = window.mapPixelToCoords(cur - window.getPosition());
+            ghost.draw(window, fp);
         }
-    }
+    };
+    renderFlyingZone(state_.battlefield);
+    renderFlyingZone(state_.hand);
+    renderFlyingZone(state_.graveyard);
+    renderFlyingZone(state_.exile);
+    renderFlyingZone(state_.deck);
+    renderFlyingZone(state_.command_zone);
 
     if (pile_viewer_.visible) pile_viewer_.draw(window, fp);
     ctx_menu_.draw(window, fp);

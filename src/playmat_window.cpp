@@ -137,6 +137,11 @@ void PlaymatWindow::reflow(sf::Vector2u size) {
     gy_viewer_.overlay    = pv_overlay;
     exile_viewer_.overlay = pv_overlay;
 
+    state_.pos_zone_bf    = {w_ / 2.f, h_ / 2.f};
+    state_.pos_zone_gy    = gy_ctr_;
+    state_.pos_zone_exile = exile_ctr_;
+    state_.pos_zone_cmd   = {PM_CMD_CX, PM_CMD_CY};
+
     updateView(window, ui_scale_);
 
     if (vcam_enabled_) {
@@ -166,24 +171,27 @@ int PlaymatWindow::cardAt(sf::Vector2f p) const {
 
 void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift) {
     // -- PileViewer actions ---------------------------------------------
-    if (gy_viewer_.visible) {
-        auto act = gy_viewer_.handleClick(p);
-        if (act.valid) {
-            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
-            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
+    auto handlePileViewerAction = [&](PileViewer& viewer, sf::Vector2f pile_center) {
+        auto act = viewer.handleClick(p);
+        if (!act.valid) return;
+        sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(pile_center));
+        sf::Vector2i dst = state_.zoneDesktopCenter(act.to);
+        state_.moveCard(act.from, act.index, act.to, act.deck_pos);
+        if (Card* c = state_.lastInZone(act.to, act.deck_pos)) {
+            if (act.to == Zone::BATTLEFIELD) {
+                c->target_position = {w_ / 2.f, h_ / 2.f};
+                c->position        = pile_center;
+            }
+            c->is_flying_cross_window = true;
+            c->start_desktop_pos      = src;
+            c->end_desktop_pos        = dst;
+            c->anim_timer             = 0.f;
+            c->is_animating           = false;
         }
-        return;
-    }
-    if (exile_viewer_.visible) {
-        auto act = exile_viewer_.handleClick(p);
-        if (act.valid) {
-            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
-            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
-        }
-        return;
-    }
+    };
+
+    if (gy_viewer_.visible)    { handlePileViewerAction(gy_viewer_,    gy_ctr_);    return; }
+    if (exile_viewer_.visible) { handlePileViewerAction(exile_viewer_, exile_ctr_); return; }
     if (btn == sf::Mouse::Button::Right) {
         ctx_menu_.hide(); z_menu_.hide(); cmd_ctx_menu_.hide();
         // Check command zone first (top-left, doesn't overlap battlefield).
@@ -254,19 +262,35 @@ void PlaymatWindow::onMouseScroll(sf::Vector2f p, float delta) {
 void PlaymatWindow::applyContextAction(int item) {
     int idx = ctx_menu_.target_idx;
     if (idx < 0 || idx >= static_cast<int>(state_.battlefield.size())) return;
+
+    sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(state_.battlefield[idx].position));
+    auto fly = [&](Card& c, Zone to) {
+        c.is_flying_cross_window = true;
+        c.start_desktop_pos      = src;
+        c.end_desktop_pos        = state_.zoneDesktopCenter(to);
+        c.anim_timer             = 0.f;
+        c.is_animating           = false;
+    };
+
     if (item == static_cast<int>(CTX_ITEMS.size())) {
         state_.moveCard(Zone::BATTLEFIELD, idx, Zone::COMMAND_ZONE);
+        if (auto* c = state_.lastInZone(Zone::COMMAND_ZONE)) fly(*c, Zone::COMMAND_ZONE);
         return;
     }
     switch (item) {
-        case CTX_FLIP:       state_.battlefield[idx].face_down = !state_.battlefield[idx].face_down; break;
-        case CTX_TO_HAND:    state_.moveCard(Zone::BATTLEFIELD, idx, Zone::HAND);                    break;
-        case CTX_TO_GY:      state_.moveCard(Zone::BATTLEFIELD, idx, Zone::GRAVEYARD);               break;
-        case CTX_TO_EXILE:   state_.moveCard(Zone::BATTLEFIELD, idx, Zone::EXILE);                   break;
-        case CTX_TO_DECK_TOP: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::TOP);     break;
-        case CTX_TO_DECK_BOT: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::BOTTOM);  break;
-        case CTX_ADD_CTR:    state_.battlefield[idx].counters++;                                     break;
-        case CTX_REM_CTR:    state_.battlefield[idx].counters--;                                     break;
+        case CTX_FLIP:        state_.battlefield[idx].face_down = !state_.battlefield[idx].face_down; break;
+        case CTX_TO_HAND:     state_.moveCard(Zone::BATTLEFIELD, idx, Zone::HAND);
+                              if (auto* c = state_.lastInZone(Zone::HAND))     fly(*c, Zone::HAND);     break;
+        case CTX_TO_GY:       state_.moveCard(Zone::BATTLEFIELD, idx, Zone::GRAVEYARD);
+                              if (auto* c = state_.lastInZone(Zone::GRAVEYARD)) fly(*c, Zone::GRAVEYARD); break;
+        case CTX_TO_EXILE:    state_.moveCard(Zone::BATTLEFIELD, idx, Zone::EXILE);
+                              if (auto* c = state_.lastInZone(Zone::EXILE))    fly(*c, Zone::EXILE);    break;
+        case CTX_TO_DECK_TOP: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::TOP);
+                              if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::TOP))    fly(*c, Zone::DECK); break;
+        case CTX_TO_DECK_BOT: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::BOTTOM);
+                              if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::BOTTOM)) fly(*c, Zone::DECK); break;
+        case CTX_ADD_CTR:     state_.battlefield[idx].counters++;                                      break;
+        case CTX_REM_CTR:     state_.battlefield[idx].counters--;                                      break;
     }
 }
 
@@ -306,18 +330,37 @@ int PlaymatWindow::cmdCardAt(sf::Vector2f p) const {
 void PlaymatWindow::applyCmdContextAction(int item) {
     int idx = cmd_ctx_menu_.target_idx;
     if (idx < 0 || idx >= (int)state_.command_zone.size()) return;
+
+    sf::Vector2f cmd_pos = {PM_CMD_CX + idx * (CARD_W + 10.f), PM_CMD_CY};
+    sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(cmd_pos));
+    auto fly = [&](Card& c, Zone to) {
+        c.is_flying_cross_window = true;
+        c.start_desktop_pos      = src;
+        c.end_desktop_pos        = state_.zoneDesktopCenter(to);
+        c.anim_timer             = 0.f;
+        c.is_animating           = false;
+    };
+
     switch (item) {
         case CMD_TO_BF: {
             state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::BATTLEFIELD);
-            if (!state_.battlefield.empty())
-                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
+            if (auto* c = state_.lastInZone(Zone::BATTLEFIELD)) {
+                c->target_position = {w_ / 2.f, h_ / 2.f};
+                c->position        = cmd_pos;
+                fly(*c, Zone::BATTLEFIELD);
+            }
             break;
         }
-        case CMD_TO_HAND:     state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::HAND);                    break;
-        case CMD_TO_GY:       state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::GRAVEYARD);               break;
-        case CMD_TO_EXILE:    state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::EXILE);                   break;
-        case CMD_TO_DECK_TOP: state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::DECK, DeckPos::TOP);      break;
-        case CMD_TO_DECK_BOT: state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::DECK, DeckPos::BOTTOM);   break;
+        case CMD_TO_HAND:     state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::HAND);
+                              if (auto* c = state_.lastInZone(Zone::HAND))     fly(*c, Zone::HAND);     break;
+        case CMD_TO_GY:       state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::GRAVEYARD);
+                              if (auto* c = state_.lastInZone(Zone::GRAVEYARD)) fly(*c, Zone::GRAVEYARD); break;
+        case CMD_TO_EXILE:    state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::EXILE);
+                              if (auto* c = state_.lastInZone(Zone::EXILE))    fly(*c, Zone::EXILE);    break;
+        case CMD_TO_DECK_TOP: state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::DECK, DeckPos::TOP);
+                              if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::TOP))    fly(*c, Zone::DECK); break;
+        case CMD_TO_DECK_BOT: state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::DECK, DeckPos::BOTTOM);
+                              if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::BOTTOM)) fly(*c, Zone::DECK); break;
         case CMD_ADD_CTR:     state_.command_zone[idx].counters++;                                     break;
         case CMD_REM_CTR:     state_.command_zone[idx].counters--;                                     break;
     }
@@ -419,6 +462,23 @@ void PlaymatWindow::render() {
     static sf::Clock frame_clock;
     float dt = frame_clock.restart().asSeconds();
     
+    // Advance fly timers for non-battlefield zones (battlefield handles its own below)
+    auto advanceFlyZone = [&](std::vector<Card>& zone) {
+        for (auto& card : zone) {
+            if (!card.is_flying_cross_window) continue;
+            card.anim_timer += dt;
+            if (card.anim_timer >= 0.6f) {
+                card.is_flying_cross_window = false;
+                card.rotation = 0.f;
+            }
+        }
+    };
+    advanceFlyZone(state_.hand);
+    advanceFlyZone(state_.graveyard);
+    advanceFlyZone(state_.exile);
+    advanceFlyZone(state_.deck);
+    advanceFlyZone(state_.command_zone);
+
     for (auto& card : state_.battlefield) {
         if (card.is_flying_cross_window) {
             card.anim_timer += dt;
@@ -506,6 +566,26 @@ void PlaymatWindow::render() {
             }
         }
     }
+    // Flying cards from non-battlefield zones rendered in this window's viewport
+    auto renderFlyingZone = [&](const std::vector<Card>& zone) {
+        for (const auto& card : zone) {
+            if (!card.is_flying_cross_window) continue;
+            float t = std::min(1.f, card.anim_timer / 0.6f);
+            sf::Vector2i cur = {
+                (int)(card.start_desktop_pos.x + (card.end_desktop_pos.x - card.start_desktop_pos.x) * t),
+                (int)(card.start_desktop_pos.y + (card.end_desktop_pos.y - card.start_desktop_pos.y) * t)
+            };
+            Card ghost = card;
+            ghost.position = window.mapPixelToCoords(cur - window.getPosition());
+            ghost.draw(window, fp);
+        }
+    };
+    renderFlyingZone(state_.hand);
+    renderFlyingZone(state_.graveyard);
+    renderFlyingZone(state_.exile);
+    renderFlyingZone(state_.deck);
+    renderFlyingZone(state_.command_zone);
+
     if (fp) {
         auto hint = [&](float cx, float cy, bool show) {
             if (!show) return;
