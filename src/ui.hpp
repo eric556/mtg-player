@@ -36,9 +36,7 @@ struct ContextMenu {
     int          target_idx = -1;
     std::vector<std::string> items;
 
-    void show(sf::Vector2f p, int idx, const std::vector<std::string>& options) {
-        pos = p; target_idx = idx; items = options; visible = true;
-    }
+    void show(sf::Vector2f p, int idx, const std::vector<std::string>& options, sf::Vector2f window_size);
     void hide() { visible = false; target_idx = -1; items.clear(); }
     int  hitTest(sf::Vector2f p) const;
     void draw(sf::RenderTarget& target, const sf::Font* font) const;
@@ -49,7 +47,10 @@ struct ContextMenu {
 struct PileViewer {
     bool                     visible      = false;
     std::string              title;
-    std::vector<const Card*> cards;
+    
+    struct Entry { const Card* card; int original_idx; };
+    std::vector<Entry>       entries;
+    
     Zone                     current_zone = Zone::GRAVEYARD;
 
     float scroll_offset = 0.f;

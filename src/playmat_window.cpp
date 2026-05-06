@@ -175,16 +175,16 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
         ctx_menu_.hide(); z_menu_.hide(); cmd_ctx_menu_.hide();
         // Check command zone first (top-left, doesn't overlap battlefield).
         int cidx = cmdCardAt(p);
-        if (cidx >= 0) { cmd_ctx_menu_.show(p, cidx, CMD_ITEMS); return; }
+        if (cidx >= 0) { cmd_ctx_menu_.show(p, cidx, CMD_ITEMS, {w_, h_}); return; }
         int idx = cardAt(p);
         if (idx < 0) return;
         if (shift) {
-            z_menu_.show(p, idx, Z_ITEMS);
+            z_menu_.show(p, idx, Z_ITEMS, {w_, h_});
         } else {
             auto items = CTX_ITEMS;
             if (state_.commander_mode && state_.battlefield[idx].is_commander)
                 items.push_back("Return to command zone");
-            ctx_menu_.show(p, idx, items);
+            ctx_menu_.show(p, idx, items, {w_, h_});
         }
         return;
     }
@@ -350,11 +350,11 @@ void PlaymatWindow::drawAltPreview(sf::RenderTarget& target, const sf::Font* fon
     const Card* target_card = nullptr;
 
     if (gy_viewer_.visible) {
-        if (gy_viewer_.hovered_idx >= 0 && gy_viewer_.hovered_idx < (int)gy_viewer_.cards.size())
-            target_card = gy_viewer_.cards[gy_viewer_.hovered_idx];
+        if (gy_viewer_.hovered_idx >= 0 && gy_viewer_.hovered_idx < (int)gy_viewer_.entries.size())
+            target_card = gy_viewer_.entries[gy_viewer_.hovered_idx].card;
     } else if (exile_viewer_.visible) {
-        if (exile_viewer_.hovered_idx >= 0 && exile_viewer_.hovered_idx < (int)exile_viewer_.cards.size())
-            target_card = exile_viewer_.cards[exile_viewer_.hovered_idx];
+        if (exile_viewer_.hovered_idx >= 0 && exile_viewer_.hovered_idx < (int)exile_viewer_.entries.size())
+            target_card = exile_viewer_.entries[exile_viewer_.hovered_idx].card;
     } else {
         int idx = cardAt(mouse_pos);
         if (idx >= 0) target_card = &state_.battlefield[idx];
@@ -378,10 +378,11 @@ void PlaymatWindow::drawAltPreview(sf::RenderTarget& target, const sf::Font* fon
         float pw = CARD_W * PS, ph = CARD_H * PS;
         sf::Vector2f pp = mouse_pos + sf::Vector2f(20.f, 20.f);
 
+        // Try right side first, then flip to left if off-screen
         if (pp.x + pw > w_) pp.x = mouse_pos.x - pw - 20.f;
-        if (pp.y + ph > h_) pp.y = h_ - ph - 10.f;
-        if (pp.x < 0.f) pp.x = 5.f;
-        if (pp.y < 0.f) pp.y = 5.f;
+        
+        // Final clamp to window bounds using utility
+        pp = fitToWindow(pp, {pw, ph}, {w_, h_});
 
         Card preview = *target_card;
         preview.position  = pp + sf::Vector2f(pw / 2.f, ph / 2.f);

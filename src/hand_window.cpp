@@ -151,7 +151,7 @@ void HandWindow::onMouseRightClick(sf::Vector2f p) {
             "Send to exile",
             "To top of deck",
             "To bottom of deck",
-        });
+        }, {w_, h_});
     }
 }
 
@@ -235,8 +235,8 @@ void HandWindow::drawAltPreview(sf::RenderTarget& target, const sf::Font* font, 
     const Card* target_card = nullptr;
 
     if (pile_viewer_.visible) {
-        if (pile_viewer_.hovered_idx >= 0 && pile_viewer_.hovered_idx < (int)pile_viewer_.cards.size())
-            target_card = pile_viewer_.cards[pile_viewer_.hovered_idx];
+        if (pile_viewer_.hovered_idx >= 0 && pile_viewer_.hovered_idx < (int)pile_viewer_.entries.size())
+            target_card = pile_viewer_.entries[pile_viewer_.hovered_idx].card;
     } else {
         int hidx = handCardAt(mouse_pos);
         if (hidx >= 0) target_card = &state_.hand[hidx];
@@ -260,10 +260,11 @@ void HandWindow::drawAltPreview(sf::RenderTarget& target, const sf::Font* font, 
         float pw = CARD_W * PS, ph = CARD_H * PS;
         sf::Vector2f pp = mouse_pos + sf::Vector2f(20.f, 20.f);
 
+        // Try right side first, then flip to left if off-screen
         if (pp.x + pw > w_) pp.x = mouse_pos.x - pw - 20.f;
-        if (pp.y + ph > h_) pp.y = h_ - ph - 10.f;
-        if (pp.x < 0.f) pp.x = 5.f;
-        if (pp.y < 0.f) pp.y = 5.f;
+        
+        // Final clamp to window bounds using utility
+        pp = fitToWindow(pp, {pw, ph}, {w_, h_});
 
         Card preview = *target_card;
         preview.position  = pp + sf::Vector2f(pw / 2.f, ph / 2.f);

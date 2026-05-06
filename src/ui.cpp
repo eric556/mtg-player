@@ -1,6 +1,8 @@
 #include "ui.hpp"
+#include "window_utils.hpp"
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 // -- Button -----------------------------------------------------------------
 
@@ -30,6 +32,16 @@ void Button::draw(sf::RenderTarget& target, const sf::Font* font) const {
 
 static constexpr float ITEM_H = 23.f;
 static constexpr float MENU_W = 200.f;
+
+void ContextMenu::show(sf::Vector2f p, int idx, const std::vector<std::string>& options, sf::Vector2f window_size)
+{
+    items = options;
+    target_idx = idx;
+    visible = true;
+    
+    float total_h = items.size() * ITEM_H;
+    pos = fitToWindow(p, {MENU_W, total_h}, window_size);
+}
 
 int ContextMenu::hitTest(sf::Vector2f p) const
 {
@@ -102,8 +114,16 @@ PileViewer::actionButtons(float btn_x, float row_y) const
 void PileViewer::show(const std::string& t, const std::vector<Card>& pile, Zone z)
 {
     title = t; current_zone = z;
-    cards.clear();
-    for (const auto& c : pile) cards.push_back(&c);
+    entries.clear();
+    for (int i = 0; i < (int)pile.size(); ++i) {
+        entries.push_back({ &pile[i], i });
+    }
+
+    if (z == Zone::DECK) {
+        static std::mt19937 rng{ std::random_device{}() };
+        std::shuffle(entries.begin(), entries.end(), rng);
+    }
+
     scroll_offset = 0.f; hovered_idx = -1; visible = true;
 }
 
@@ -113,7 +133,7 @@ PileAction PileViewer::handleClick(sf::Vector2f p)
 {
     if (!visible) return {};
 
-    if (overlay.contains(p) && hovered_idx >= 0 && hovered_idx < (int)cards.size()) {
+    if (overlay.contains(p) && hovered_idx >= 0 && hovered_idx < (int)entries.size()) {
         float list_top = overlay.position.y + 40.f;
         float row_y    = list_top + (hovered_idx * 18.f) - scroll_offset;
         float btn_x    = overlay.position.x + overlay.size.x - 305.f;
@@ -121,12 +141,12 @@ PileAction PileViewer::handleClick(sf::Vector2f p)
         for (const auto& btn : actionButtons(btn_x, row_y)) {
             if (btn.rect.contains(p)) {
                 visible = false;
-                return { true, hovered_idx, current_zone, btn.to, btn.deck_pos };
+                return { true, entries[hovered_idx].original_idx, current_zone, btn.to, btn.deck_pos };
             }
         }
     }
 
-    // Clicked outside any button → close
+    // Clicked outside any button -> close
     visible = false;
     return {};
 }
@@ -142,7 +162,7 @@ void PileViewer::handleMouseMove(sf::Vector2f p)
     if (!visible || !overlay.contains(p)) { hovered_idx = -1; return; }
     float rel = p.y - (overlay.position.y + 40.f) + scroll_offset;
     int idx = static_cast<int>(rel / 18.f);
-    hovered_idx = (idx >= 0 && idx < (int)cards.size()) ? idx : -1;
+    hovered_idx = (idx >= 0 && idx < (int)entries.size()) ? idx : -1;
 }
 
 void PileViewer::drawScrollbar(sf::RenderTarget& target, float total_h) const
@@ -180,24 +200,24 @@ void PileViewer::draw(sf::RenderTarget& target, const sf::Font* font) const
     target.draw(bg);
 
     // Title
-    sf::Text ttl(*font, title + " (" + std::to_string(cards.size()) + ")", 16);
+    sf::Text ttl(*font, title + " (" + std::to_string(entries.size()) + ")", 16);
     ttl.setFillColor(sf::Color(230, 220, 180));
     ttl.setPosition({std::round(OX + 12.f), std::round(OY + 8.f)});
     target.draw(ttl);
 
     float list_top = OY + 40.f;
     float list_bot = OY + OH - 30.f;
-    float total_content_h = cards.size() * 18.f;
+    float total_content_h = entries.size() * 18.f;
 
     float max_scroll = std::max(0.f, total_content_h - (list_bot - list_top));
     const_cast<PileViewer*>(this)->scroll_offset = std::clamp(scroll_offset, 0.f, max_scroll);
 
-    for (int i = 0; i < (int)cards.size(); ++i) {
+    for (int i = 0; i < (int)entries.size(); ++i) {
         float y = list_top + (i * 18.f) - scroll_offset;
         if (y < list_top - 18.f || y > list_bot) continue;
 
         bool hov = (i == hovered_idx);
-        sf::Text row(*font, std::to_string(i + 1) + ". " + cards[i]->name, 13);
+        sf::Text row(*font, std::to_string(i + 1) + ". " + entries[i].card->name, 13);
         row.setFillColor(hov ? sf::Color::Cyan : sf::Color(210, 210, 200));
         row.setPosition({std::round(OX + 15.f), std::round(y)});
         target.draw(row);
@@ -245,27 +265,18 @@ void PileViewer::draw(sf::RenderTarget& target, const sf::Font* font) const
     target.draw(hint);
 
     // Card preview
-    if (hovered_idx >= 0 && hovered_idx < (int)cards.size()) {
-        const Card* c = cards[hovered_idx];
+    if (hovered_idx >= 0 && hovered_idx < (int)entries.size()) {
+        const Card* c = entries[hovered_idx].card;
         constexpr float PS = 2.5f;
         float pw = CARD_W * PS, ph = CARD_H * PS;
-        float vw = target.getView().getSize().x;
-        float vh = target.getView().getSize().y;
+        sf::Vector2f window_size = target.getView().getSize();
 
-        // Try right side first
+        // Try right side first, then flip to left if off-screen
         sf::Vector2f pp = { OX + OW + 10.f, OY };
+        if (pp.x + pw > window_size.x) pp.x = OX - pw - 10.f;
         
-        // If it goes off-right, try left side
-        if (pp.x + pw > vw) {
-            pp.x = OX - pw - 10.f;
-        }
-        
-        // If it still goes off-left, or off-right (small window), clamp to screen edges
-        if (pp.x < 0.f) pp.x = 5.f;
-        if (pp.x + pw > vw) pp.x = vw - pw - 5.f;
-
-        if (pp.y < 0.f) pp.y = 5.f;
-        if (pp.y + ph > vh) pp.y = vh - ph - 5.f;
+        // Final clamp to window bounds using utility
+        pp = fitToWindow(pp, {pw, ph}, window_size);
 
         Card preview = *c;
         preview.position  = pp + sf::Vector2f(pw / 2.f, ph / 2.f);
