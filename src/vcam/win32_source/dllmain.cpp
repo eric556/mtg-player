@@ -94,65 +94,29 @@ static HRESULT RegSetSZ(HKEY hRoot, const wchar_t* subKey,
 }
 
 STDAPI DllRegisterServer() {
-    // Get the path of this DLL
-    wchar_t dllPath[MAX_PATH] = {};
-    GetModuleFileNameW(g_hModule, dllPath, MAX_PATH);
+    wchar_t dll[MAX_PATH] = {};
+    GetModuleFileNameW(g_hModule, dll, MAX_PATH);
 
-    // Format CLSID as string
     wchar_t clsidStr[64] = {};
     StringFromGUID2(CLSID_MtgVCamSource, clsidStr, 64);
 
-    // Register under HKCU (no admin needed, works for CurrentUser virtual cameras)
-    std::wstring base = std::wstring(L"Software\\Classes\\CLSID\\") + clsidStr;
-    HRESULT hr = RegSetSZ(HKEY_CURRENT_USER, base.c_str(), nullptr, L"MTG Sim Virtual Camera");
-    if (FAILED(hr)) return hr;
-
+    // Register under HKLM so the Frame Server service (SYSTEM) can CoCreateInstance.
+    // Called by regsvr32 running elevated (UAC); called once at first use.
+    std::wstring base   = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + clsidStr;
     std::wstring inproc = base + L"\\InprocServer32";
-    hr = RegSetSZ(HKEY_CURRENT_USER, inproc.c_str(), nullptr, dllPath);
-    if (FAILED(hr)) return hr;
-    hr = RegSetSZ(HKEY_CURRENT_USER, inproc.c_str(), L"ThreadingModel", L"Both");
-    if (FAILED(hr)) return hr;
 
-    // Register in the camera categories so Windows enumerates it.
-    // Using literal strings to avoid pulling in <ks.h> / DDK headers.
-    // KSCATEGORY_VIDEO_CAMERA = {E5323777-F976-4f5b-9B55-B94699C46E44}
-    // KSCATEGORY_VIDEO        = {6994AD05-93EF-11D0-A3CC-00A0C9223196}
-    static const wchar_t* kCats[] = {
-        L"{E5323777-F976-4f5b-9B55-B94699C46E44}",
-        L"{6994AD05-93EF-11D0-A3CC-00A0C9223196}",
-    };
-    for (const wchar_t* cat : kCats) {
-        std::wstring catKey = std::wstring(
-            L"Software\\Classes\\CLSID\\") + cat + L"\\Instance\\" + clsidStr;
-        hr = RegSetSZ(HKEY_CURRENT_USER, catKey.c_str(), nullptr, L"MTG Sim Virtual Camera");
-        if (FAILED(hr)) return hr;
-        hr = RegSetSZ(HKEY_CURRENT_USER, catKey.c_str(), L"CLSID", clsidStr);
-        if (FAILED(hr)) return hr;
-        hr = RegSetSZ(HKEY_CURRENT_USER, catKey.c_str(), L"FriendlyName", L"MTG Sim");
-        if (FAILED(hr)) return hr;
-    }
-
-    return S_OK;
+    HRESULT hr = RegSetSZ(HKEY_LOCAL_MACHINE, base.c_str(), nullptr, L"MTG Sim Virtual Camera");
+    if (FAILED(hr)) return hr;
+    hr = RegSetSZ(HKEY_LOCAL_MACHINE, inproc.c_str(), nullptr, dll);
+    if (FAILED(hr)) return hr;
+    return RegSetSZ(HKEY_LOCAL_MACHINE, inproc.c_str(), L"ThreadingModel", L"Both");
 }
 
 STDAPI DllUnregisterServer() {
     wchar_t clsidStr[64] = {};
     StringFromGUID2(CLSID_MtgVCamSource, clsidStr, 64);
-
-    static const wchar_t* kCats[] = {
-        L"{E5323777-F976-4f5b-9B55-B94699C46E44}",
-        L"{6994AD05-93EF-11D0-A3CC-00A0C9223196}",
-    };
-    for (const wchar_t* cat : kCats) {
-        std::wstring catKey = std::wstring(
-            L"Software\\Classes\\CLSID\\") + cat + L"\\Instance\\" + clsidStr;
-        RegDeleteTreeW(HKEY_CURRENT_USER, catKey.c_str());
-    }
-
-    // Remove CLSID registration
-    std::wstring base = std::wstring(L"Software\\Classes\\CLSID\\") + clsidStr;
-    RegDeleteTreeW(HKEY_CURRENT_USER, base.c_str());
-
+    std::wstring base = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + clsidStr;
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, base.c_str());
     return S_OK;
 }
 

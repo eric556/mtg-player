@@ -13,11 +13,13 @@ DEFINE_CLSID_MtgVCamSource()   // one definition per binary (exe side)
 #include <mfvirtualcamera.h>
 #include <mfapi.h>
 #include <shlwapi.h>   // PathRemoveFileSpecW
+#include <shellapi.h>  // ShellExecuteExW
 #include <iostream>
 #include <string>
 #include <cstring>
 
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "shell32.lib")
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,20 +36,35 @@ static std::wstring dllPath() {
     return exeDir() + L"\\mtg-sim-vcam.dll";
 }
 
-// Run DllRegisterServer from our DLL in-process (no regsvr32, no UAC needed
-// for HKCU registration used by MFVirtualCameraAccess_CurrentUser).
-static bool registerDll(const std::wstring& path) {
-    HMODULE hMod = LoadLibraryW(path.c_str());
-    if (!hMod) {
-        std::cerr << "vcam-win32: cannot load " << std::string(path.begin(), path.end()) << "\n";
+// Spawn regsvr32 elevated via UAC to write the InprocServer32 key into HKLM.
+// Blocks until regsvr32 exits (up to 15 s).
+static bool registerDllElevated(const std::wstring& dll) {
+    wchar_t sysDir[MAX_PATH] = {};
+    GetSystemDirectoryW(sysDir, MAX_PATH);
+    std::wstring regsvr32 = std::wstring(sysDir) + L"\\regsvr32.exe";
+    std::wstring params   = L"/s \"" + dll + L"\"";
+
+    SHELLEXECUTEINFOW sei = {};
+    sei.cbSize       = sizeof(sei);
+    sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb       = L"runas";
+    sei.lpFile       = regsvr32.c_str();
+    sei.lpParameters = params.c_str();
+    sei.nShow        = SW_HIDE;
+
+    if (!ShellExecuteExW(&sei)) {
+        DWORD err = GetLastError();
+        if (err == ERROR_CANCELLED)
+            std::cerr << "vcam-win32: UAC prompt was cancelled — re-run to register.\n";
+        else
+            std::cerr << "vcam-win32: ShellExecuteEx failed (" << err << ")\n";
         return false;
     }
-    using Fn = HRESULT(STDAPICALLTYPE*)();
-    auto fn = reinterpret_cast<Fn>(GetProcAddress(hMod, "DllRegisterServer"));
-    bool ok = fn && SUCCEEDED(fn());
-    FreeLibrary(hMod);
-    if (!ok) std::cerr << "vcam-win32: DllRegisterServer failed\n";
-    return ok;
+    if (sei.hProcess) {
+        WaitForSingleObject(sei.hProcess, 15000);
+        CloseHandle(sei.hProcess);
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,16 +149,23 @@ void VcamWin32::pushFrame(const uint8_t* bgra, unsigned width, unsigned height) 
 // ---------------------------------------------------------------------------
 
 bool VcamWin32::ensureDllRegistered() {
-    // Check if our CLSID is already registered under HKCU.
     wchar_t clsidStr[64];
     StringFromGUID2(CLSID_MtgVCamSource, clsidStr, 64);
-    std::wstring keyPath = std::wstring(L"Software\\Classes\\CLSID\\") + clsidStr;
+    // AllUsers cameras must be in HKLM so the Frame Server service can CoCreateInstance them.
+    std::wstring keyPath = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + clsidStr;
     HKEY hk = nullptr;
-    bool already = (RegOpenKeyExW(HKEY_CURRENT_USER, keyPath.c_str(), 0, KEY_READ, &hk) == ERROR_SUCCESS);
+    bool already = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hk) == ERROR_SUCCESS);
     if (hk) RegCloseKey(hk);
     if (already) return true;
 
-    return registerDll(dllPath());
+    std::cout << "vcam-win32: registering COM source in HKLM (a UAC prompt will appear once)\n";
+    if (!registerDllElevated(dllPath())) return false;
+
+    hk = nullptr;
+    bool ok = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hk) == ERROR_SUCCESS);
+    if (hk) RegCloseKey(hk);
+    if (!ok) std::cerr << "vcam-win32: HKLM registration failed\n";
+    return ok;
 }
 
 bool VcamWin32::createVirtualCamera() {
@@ -161,7 +185,7 @@ bool VcamWin32::createVirtualCamera() {
     hr = MFCreateVirtualCamera(
         MFVirtualCameraType_SoftwareCameraSource,
         MFVirtualCameraLifetime_Session,
-        MFVirtualCameraAccess_CurrentUser,
+        MFVirtualCameraAccess_AllUsers,
         L"MTG Sim",
         clsidStr,
         cats,
