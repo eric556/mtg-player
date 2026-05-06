@@ -40,7 +40,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libx11-dev libxrandr-dev libxcursor-dev \
-            libxi-dev libudev-dev libgl-dev
+            libxi-dev libudev-dev libgl-dev \
+            libfreetype6-dev libharfbuzz-dev
 
       - name: Cache build dependencies
         uses: actions/cache@v4
