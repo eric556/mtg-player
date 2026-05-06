@@ -3,6 +3,8 @@
 #include "ui.hpp"
 #include <SFML/Graphics.hpp>
 
+class HandWindow;
+
 // -- Playmat window (the public, stream-shared window) ----------------------
 
 class PlaymatWindow {
@@ -11,11 +13,16 @@ public:
 
     explicit PlaymatWindow(GameState& gs);
 
+    void setHandWindow(HandWindow* hw) { hand_win_ = hw; }
+
     void handleEvent(const sf::Event& e);
     void render();
 
+    sf::Vector2i getPileDesktopPos(Zone z) const;
+
 private:
     GameState& state_;
+    HandWindow* hand_win_ = nullptr;
     sf::Font   font_;
     bool       font_loaded_ = false;
     ContextMenu ctx_menu_;     // right-click on battlefield: zone actions
@@ -48,6 +55,7 @@ private:
     void applyContextAction(int item);
     void applyZAction(int item);
     void applyCmdContextAction(int item);
+    void moveCardWithAnim(Zone from, int idx, Zone to, DeckPos dp = DeckPos::TOP);
     int  cmdCardAt(sf::Vector2f p) const;
     void drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const;
 };

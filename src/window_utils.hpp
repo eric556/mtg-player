@@ -20,3 +20,16 @@ inline sf::Vector2f fitToWindow(sf::Vector2f pos, sf::Vector2f rect_size, sf::Ve
     if (out.y < margin) out.y = margin;
     return out;
 }
+
+// Draws a card that is flying in desktop space.
+inline void drawFlyingCard(sf::RenderWindow& window, const Card& card, const sf::Font* font) {
+    float t = card.anim_timer / 0.6f;
+    if (t > 1.0f) t = 1.0f;
+    sf::Vector2i cur = {
+        (int)(card.start_desktop_pos.x + (card.end_desktop_pos.x - card.start_desktop_pos.x) * t),
+        (int)(card.start_desktop_pos.y + (card.end_desktop_pos.y - card.start_desktop_pos.y) * t)
+    };
+    Card cross = card;
+    cross.position = window.mapPixelToCoords(cur - window.getPosition());
+    cross.draw(window, font);
+}

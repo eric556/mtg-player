@@ -1,4 +1,5 @@
 #include "playmat_window.hpp"
+#include "hand_window.hpp"
 #include "window_utils.hpp"
 #include "card.hpp"
 #include <array>
@@ -151,23 +152,44 @@ int PlaymatWindow::cardAt(sf::Vector2f p) const {
     return -1;
 }
 
+void PlaymatWindow::moveCardWithAnim(Zone from, int idx, Zone to, DeckPos dp)
+{
+    sf::Vector2i start_pix, end_pix;
+    
+    // Get start position based on source zone
+    if (from == Zone::BATTLEFIELD) {
+        start_pix = window.getPosition() + window.mapCoordsToPixel(state_.battlefield[idx].position);
+    } else if (from == Zone::COMMAND_ZONE) {
+        start_pix = window.getPosition() + window.mapCoordsToPixel(state_.command_zone[idx].position);
+    } else {
+        start_pix = getPileDesktopPos(from);
+    }
+    
+    // Get end position based on destination zone
+    if (to == Zone::HAND && hand_win_) {
+        end_pix = hand_win_->getPileDesktopPos(to);
+    } else if (to == Zone::DECK && hand_win_) {
+        end_pix = hand_win_->getPileDesktopPos(to);
+    } else {
+        end_pix = getPileDesktopPos(to);
+    }
+    
+    state_.moveCardAnimated(from, idx, to, start_pix, end_pix, dp);
+}
+
 void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift) {
     // -- PileViewer actions ---------------------------------------------
     if (gy_viewer_.visible) {
         auto act = gy_viewer_.handleClick(p);
         if (act.valid) {
-            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
-            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
+            moveCardWithAnim(act.from, act.index, act.to, act.deck_pos);
         }
         return;
     }
     if (exile_viewer_.visible) {
         auto act = exile_viewer_.handleClick(p);
         if (act.valid) {
-            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
-            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
+            moveCardWithAnim(act.from, act.index, act.to, act.deck_pos);
         }
         return;
     }
@@ -242,16 +264,16 @@ void PlaymatWindow::applyContextAction(int item) {
     int idx = ctx_menu_.target_idx;
     if (idx < 0 || idx >= static_cast<int>(state_.battlefield.size())) return;
     if (item == static_cast<int>(CTX_ITEMS.size())) {
-        state_.moveCard(Zone::BATTLEFIELD, idx, Zone::COMMAND_ZONE);
+        moveCardWithAnim(Zone::BATTLEFIELD, idx, Zone::COMMAND_ZONE);
         return;
     }
     switch (item) {
         case CTX_FLIP:       state_.battlefield[idx].face_down = !state_.battlefield[idx].face_down; break;
-        case CTX_TO_HAND:    state_.moveCard(Zone::BATTLEFIELD, idx, Zone::HAND);                    break;
-        case CTX_TO_GY:      state_.moveCard(Zone::BATTLEFIELD, idx, Zone::GRAVEYARD);               break;
-        case CTX_TO_EXILE:   state_.moveCard(Zone::BATTLEFIELD, idx, Zone::EXILE);                   break;
-        case CTX_TO_DECK_TOP: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::TOP);     break;
-        case CTX_TO_DECK_BOT: state_.moveCard(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::BOTTOM);  break;
+        case CTX_TO_HAND:    moveCardWithAnim(Zone::BATTLEFIELD, idx, Zone::HAND);                    break;
+        case CTX_TO_GY:      moveCardWithAnim(Zone::BATTLEFIELD, idx, Zone::GRAVEYARD);               break;
+        case CTX_TO_EXILE:   moveCardWithAnim(Zone::BATTLEFIELD, idx, Zone::EXILE);                   break;
+        case CTX_TO_DECK_TOP: moveCardWithAnim(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::TOP);     break;
+        case CTX_TO_DECK_BOT: moveCardWithAnim(Zone::BATTLEFIELD, idx, Zone::DECK, DeckPos::BOTTOM);  break;
         case CTX_ADD_CTR:    state_.battlefield[idx].counters++;                                     break;
         case CTX_REM_CTR:    state_.battlefield[idx].counters--;                                     break;
     }
@@ -467,6 +489,10 @@ void PlaymatWindow::render() {
     drawPileStack(window, fp, gy_ctr_,    (int)state_.graveyard.size(), "GY",    sf::Color(110, 45, 45, 210));
     drawPileStack(window, fp, exile_ctr_, (int)state_.exile.size(),     "EXILE", sf::Color(110, 80, 25, 210));
 
+    for (const auto& card : state_.flying_cards) {
+        drawFlyingCard(window, card, fp);
+    }
+
     // -- Command zone (top-left) -------------------------------------------
     if (state_.commander_mode) {
         if (state_.command_zone.empty()) {
@@ -515,4 +541,16 @@ void PlaymatWindow::render() {
     drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
 
     window.display();
+}
+
+sf::Vector2i PlaymatWindow::getPileDesktopPos(Zone z) const {
+    sf::Vector2f virtual_pos;
+    switch (z) {
+        case Zone::GRAVEYARD:    virtual_pos = gy_ctr_;    break;
+        case Zone::EXILE:        virtual_pos = exile_ctr_; break;
+        case Zone::COMMAND_ZONE: virtual_pos = {PM_CMD_CX, PM_CMD_CY}; break;
+        case Zone::BATTLEFIELD:  virtual_pos = {w_ / 2.f, h_ / 2.f}; break;
+        default:                 virtual_pos = {w_ / 2.f, h_ / 2.f}; break;
+    }
+    return window.getPosition() + window.mapCoordsToPixel(virtual_pos);
 }

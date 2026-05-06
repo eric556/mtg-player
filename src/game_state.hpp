@@ -16,6 +16,7 @@ struct GameState {
     std::vector<Card> graveyard;
     std::vector<Card> exile;
     std::vector<Card> command_zone;
+    std::vector<Card> flying_cards;
 
     int  life_total      = 20;
     int  dice_result     = 0;
@@ -31,6 +32,9 @@ struct GameState {
     void playCard(int hand_idx, sf::Vector2f pos, sf::Vector2f start_pos);
 
     void moveCard(Zone from, int idx, Zone to, DeckPos deck_pos = DeckPos::TOP);
+    void moveCardAnimated(Zone from, int idx, Zone to, sf::Vector2i start_pix, sf::Vector2i end_pix, DeckPos deck_pos = DeckPos::TOP);
+
+    void updateAnimations(float dt);
 
     int rollDice(int sides);
 

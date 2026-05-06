@@ -56,6 +56,9 @@ int main(int argc, char* argv[])
     HandWindow    hand_win(state);
     PlaymatWindow playmat_win(state);
 
+    hand_win.setPlaymatWindow(&playmat_win);
+    playmat_win.setHandWindow(&hand_win);
+
     state.hand_window_ptr = &hand_win.window;
     state.playmat_window_ptr = &playmat_win.window;
 
@@ -83,11 +86,13 @@ int main(int argc, char* argv[])
             }
         }
 
+        sf::Time elapsed = frame_clock.restart();
+        state.updateAnimations(elapsed.asSeconds());
+
         hand_win.render();
         playmat_win.render();
 
-        // ── 60 FPS cap ────────────────────────────────────────────────────
-        sf::Time elapsed = frame_clock.restart();
+        // -- 60 FPS cap ----------------------------------------------------
         if (elapsed < FRAME_TIME)
             sf::sleep(FRAME_TIME - elapsed);
     }

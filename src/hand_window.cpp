@@ -1,4 +1,5 @@
 #include "hand_window.hpp"
+#include "playmat_window.hpp"
 #include "window_utils.hpp"
 #include "card.hpp"
 #include <algorithm>
@@ -82,14 +83,34 @@ int HandWindow::handCardAt(sf::Vector2f p) const {
     return -1;
 }
 
+void HandWindow::moveCardWithAnim(Zone from, int idx, Zone to, DeckPos dp)
+{
+    sf::Vector2i start_pix, end_pix;
+    
+    // Get start position based on source zone
+    if (from == Zone::HAND) {
+        start_pix = window.getPosition() + window.mapCoordsToPixel(handCardCenter(idx));
+    } else {
+        start_pix = getPileDesktopPos(from);
+    }
+    
+    // Get end position based on destination zone
+    // If it's a zone on the Playmat, ask the Playmat window
+    if ((to == Zone::GRAVEYARD || to == Zone::EXILE || to == Zone::BATTLEFIELD) && playmat_win_) {
+        end_pix = playmat_win_->getPileDesktopPos(to);
+    } else {
+        end_pix = getPileDesktopPos(to);
+    }
+    
+    state_.moveCardAnimated(from, idx, to, start_pix, end_pix, dp);
+}
+
 void HandWindow::onMousePress(sf::Vector2f p) {
     // -- PileViewer actions -----------------------------------------------
     if (pile_viewer_.visible) {
         auto act = pile_viewer_.handleClick(p);
         if (act.valid) {
-            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
-            if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {640.f, 400.f};
+            moveCardWithAnim(act.from, act.index, act.to, act.deck_pos);
         }
         return;
     }
@@ -159,10 +180,10 @@ void HandWindow::applyHandContextAction(int item) {
     int idx = ctx_menu_.target_idx;
     if (idx < 0 || idx >= (int)state_.hand.size()) return;
     switch (item) {
-        case 0: state_.moveCard(Zone::HAND, idx, Zone::GRAVEYARD);              break;
-        case 1: state_.moveCard(Zone::HAND, idx, Zone::EXILE);                  break;
-        case 2: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::TOP);    break;
-        case 3: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM); break;
+        case 0: moveCardWithAnim(Zone::HAND, idx, Zone::GRAVEYARD);              break;
+        case 1: moveCardWithAnim(Zone::HAND, idx, Zone::EXILE);                  break;
+        case 2: moveCardWithAnim(Zone::HAND, idx, Zone::DECK, DeckPos::TOP);    break;
+        case 3: moveCardWithAnim(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM); break;
     }
     selected_hand_idx_ = -1;
 }
@@ -328,18 +349,15 @@ void HandWindow::render() {
         preview.draw(window, fp, {w_ / 2.f, h_ * 0.42f});
     }
 
-    // Cross-window flying cards
+    // Flying animations
+    for (const auto& card : state_.flying_cards) {
+        drawFlyingCard(window, card, fp);
+    }
+
+    // Cross-window flying cards (legacy battlefield phase 1)
     for (auto& card : state_.battlefield) {
         if (card.is_flying_cross_window) {
-            float t = card.anim_timer / 0.6f;
-            if (t > 1.0f) t = 1.0f;
-            sf::Vector2i cur = {
-                (int)(card.start_desktop_pos.x + (card.end_desktop_pos.x - card.start_desktop_pos.x) * t),
-                (int)(card.start_desktop_pos.y + (card.end_desktop_pos.y - card.start_desktop_pos.y) * t)
-            };
-            Card cross = card;
-            cross.position = window.mapPixelToCoords(cur - window.getPosition());
-            cross.draw(window, fp);
+            drawFlyingCard(window, card, fp);
         }
     }
 
@@ -349,4 +367,17 @@ void HandWindow::render() {
     drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
 
     window.display();
+}
+
+sf::Vector2i HandWindow::getPileDesktopPos(Zone z) const {
+    sf::Vector2f virtual_pos;
+    switch (z) {
+        case Zone::DECK:         virtual_pos = pos_deck_;  break;
+        case Zone::GRAVEYARD:    virtual_pos = pos_gy_;    break;
+        case Zone::EXILE:        virtual_pos = pos_exile_; break;
+        case Zone::COMMAND_ZONE: virtual_pos = pos_cmd_;   break;
+        case Zone::HAND:         virtual_pos = {w_ / 2.f, h_ - 130.f}; break;
+        default:                 virtual_pos = {w_ / 2.f, h_ / 2.f};   break;
+    }
+    return window.getPosition() + window.mapCoordsToPixel(virtual_pos);
 }

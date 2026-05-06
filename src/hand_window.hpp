@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+class PlaymatWindow;
+
 // -- Hand window (private - never share this) -------------------------------
 
 class HandWindow {
@@ -13,11 +15,16 @@ public:
 
     explicit HandWindow(GameState& gs);
 
+    void setPlaymatWindow(PlaymatWindow* pw) { playmat_win_ = pw; }
+
     void handleEvent(const sf::Event& e);
     void render();
 
+    sf::Vector2i getPileDesktopPos(Zone z) const;
+
 private:
     GameState& state_;
+    PlaymatWindow* playmat_win_ = nullptr;
     sf::Font   font_;
     bool       font_loaded_ = false;
     int        selected_hand_idx_ = -1;
@@ -41,6 +48,7 @@ private:
     void         onMouseRightClick(sf::Vector2f p);
     void         onMouseMove(sf::Vector2f p);
     void         applyHandContextAction(int item);
+    void         moveCardWithAnim(Zone from, int idx, Zone to, DeckPos dp = DeckPos::TOP);
     void         drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count,
                                const std::string& label, sf::Color back_col);
     void         drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const;

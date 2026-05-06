@@ -131,6 +131,52 @@ void GameState::moveCard(Zone from, int idx, Zone to, DeckPos deck_pos)
         dst.push_back(c);
 }
 
+void GameState::moveCardAnimated(Zone from, int idx, Zone to, sf::Vector2i start_pix, sf::Vector2i end_pix, DeckPos deck_pos)
+{
+    auto& src = zoneVec(from);
+    if (idx < 0 || idx >= static_cast<int>(src.size())) return;
+
+    Card c = src[idx];
+    src.erase(src.begin() + idx);
+
+    c.start_desktop_pos = start_pix;
+    c.end_desktop_pos   = end_pix;
+    c.is_flying_cross_window = true;
+    c.anim_timer = 0.f;
+    c.fly_to_zone = to;
+    c.fly_to_pos  = deck_pos;
+    
+    // For battlefield specifically, we might want to keep the 3-phase anim if it's "Play from Hand"
+    // but the user just wants general zone changes to fly.
+    
+    flying_cards.push_back(c);
+}
+
+void GameState::updateAnimations(float dt)
+{
+    for (auto it = flying_cards.begin(); it != flying_cards.end(); ) {
+        it->anim_timer += dt;
+        float duration = 0.6f;
+        if (it->anim_timer >= duration) {
+            Card c = *it;
+            it = flying_cards.erase(it);
+            
+            // Finish move
+            int saved_counters = (c.fly_to_zone == Zone::COMMAND_ZONE) ? c.counters : 0;
+            c.resetState();
+            c.counters = saved_counters;
+            
+            auto& dst = zoneVec(c.fly_to_zone);
+            if (c.fly_to_zone == Zone::DECK && c.fly_to_pos == DeckPos::BOTTOM)
+                dst.insert(dst.begin(), c);
+            else
+                dst.push_back(c);
+        } else {
+            ++it;
+        }
+    }
+}
+
 int GameState::rollDice(int sides)
 {
     std::uniform_int_distribution<int> dist(1, sides);

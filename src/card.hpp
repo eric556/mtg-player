@@ -30,6 +30,8 @@ public:
     sf::Vector2i end_desktop_pos;
     bool         is_flying_cross_window = false;
     float        rotation              = 0.f;
+    Zone         fly_to_zone           = Zone::BATTLEFIELD;
+    DeckPos      fly_to_pos            = DeckPos::TOP;
 
     // -- Methods -----------------------------------------------------------
 
