@@ -2,15 +2,22 @@
 #include "hand_window.hpp"
 #include "playmat_window.hpp"
 #include "card_requester.hpp"
+#include "vcam/vcam_ffmpeg.hpp"
 #include <iostream>
 #include <cstdlib>
+#include <memory>
+
+#ifdef _WIN32
+#include "vcam/vcam_win32.hpp"
+#endif
 
 int main(int argc, char* argv[])
 {
     bool        commander_mode = false;
     const char* deck_path      = nullptr;
     const char* cache_path     = nullptr;
-    const char* vcam_output    = nullptr;
+    const char* vcam_output    = nullptr;  // --vcam <path>  → ffmpeg pipe
+    bool        vcam_native    = false;    // --vcam-native  → Windows IMFVirtualCamera
     int         vcam_fps       = 30;
 
     for (int i = 1; i < argc; ++i) {
@@ -23,31 +30,40 @@ int main(int argc, char* argv[])
             cache_path = argv[++i];
         } else if (a == "--vcam" && i + 1 < argc) {
             vcam_output = argv[++i];
+        } else if (a == "--vcam-native") {
+            vcam_native = true;
         } else if (a == "--vcam-fps" && i + 1 < argc) {
             vcam_fps = std::atoi(argv[++i]);
             if (vcam_fps <= 0) vcam_fps = 30;
         } else {
             std::cerr << "Unknown argument: " << a << "\n"
-                      << "Usage: mtg-sim --deck <deck.txt> [--cache <dir>] [--commander|-c]\n"
-                      << "               [--vcam <output>] [--vcam-fps <fps>]\n"
+                      << "Usage: mtg-sim --deck <deck.txt> [options]\n"
                       << "  --deck / -d       Path to deck list file (required)\n"
                       << "  --cache           Directory for caching card art\n"
                       << "  --commander / -c  First card becomes the commander\n"
-                      << "  --vcam            ffmpeg output path/URL for virtual camera\n"
-                      << "  --vcam-fps        Virtual camera framerate (default: 30)\n"
-                      << "  Deck format (one entry per line):\n"
-                      << "    4 Lightning Bolt\n"
-                      << "    1x Black Lotus\n"
-                      << "    // comments are ignored\n";
+                      << "  --vcam <output>   Stream via ffmpeg (file, RTMP, /dev/video0, ...)\n"
+                      << "  --vcam-native     Virtual webcam via Windows IMFVirtualCamera (Win 11+)\n"
+                      << "  --vcam-fps <n>    Framerate for vcam (default: 30)\n";
             return 1;
         }
     }
 
     if (!deck_path) {
-        std::cerr << "Error: --deck <deck.txt> is required.\n"
-                  << "Usage: mtg-sim --deck <deck.txt> [--cache <dir>] [--commander|-c]\n";
+        std::cerr << "Error: --deck <deck.txt> is required.\n";
         return 1;
     }
+
+    if (vcam_output && vcam_native) {
+        std::cerr << "Error: --vcam and --vcam-native are mutually exclusive.\n";
+        return 1;
+    }
+
+#ifndef _WIN32
+    if (vcam_native) {
+        std::cerr << "Error: --vcam-native is only available on Windows 11.\n";
+        return 1;
+    }
+#endif
 
     if (cache_path) {
         CardRequester::getInstance().setCacheDirectory(cache_path);
@@ -67,16 +83,22 @@ int main(int argc, char* argv[])
     HandWindow    hand_win(state);
     PlaymatWindow playmat_win(state);
 
-    state.hand_window_ptr = &hand_win.window;
+    state.hand_window_ptr    = &hand_win.window;
     state.playmat_window_ptr = &playmat_win.window;
 
-    if (vcam_output) playmat_win.startVcam(vcam_output, vcam_fps);
+    if (vcam_output) {
+        playmat_win.setVcam(std::make_unique<VcamFfmpeg>(vcam_output), vcam_fps);
+    }
+#ifdef _WIN32
+    else if (vcam_native) {
+        playmat_win.setVcam(std::make_unique<VcamWin32>(), vcam_fps);
+    }
+#endif
 
     const sf::Time FRAME_TIME = sf::seconds(1.f / 120.f);
     sf::Clock frame_clock;
 
     while (hand_win.window.isOpen() && playmat_win.window.isOpen()) {
-        // ── Hand window events ────────────────────────────────────────────
         while (const auto evt = hand_win.window.pollEvent()) {
             if (evt->is<sf::Event::Closed>()) {
                 hand_win.window.close();
@@ -86,7 +108,6 @@ int main(int argc, char* argv[])
             }
         }
 
-        // ── Playmat window events ─────────────────────────────────────────
         while (const auto evt = playmat_win.window.pollEvent()) {
             if (evt->is<sf::Event::Closed>()) {
                 playmat_win.window.close();
@@ -99,7 +120,6 @@ int main(int argc, char* argv[])
         hand_win.render();
         playmat_win.render();
 
-        // ── 60 FPS cap ────────────────────────────────────────────────────
         sf::Time elapsed = frame_clock.restart();
         if (elapsed < FRAME_TIME)
             sf::sleep(FRAME_TIME - elapsed);

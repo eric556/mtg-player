@@ -43,11 +43,30 @@ add_executable(mtg-sim
     src/hand_window.cpp
     src/playmat_window.cpp
     src/card_requester.cpp
+    src/vcam/vcam_ffmpeg.cpp
 )
 
 target_compile_features(mtg-sim PRIVATE cxx_std_20)
 target_link_libraries(mtg-sim PRIVATE SFML::Graphics cpr::cpr nlohmann_json::nlohmann_json)
 target_include_directories(mtg-sim PRIVATE src)
+
+if(WIN32)
+    target_sources(mtg-sim PRIVATE src/vcam/vcam_win32.cpp)
+    target_link_libraries(mtg-sim PRIVATE mfsensorgroup mfplat mfuuid ole32 oleaut32)
+
+    # COM DLL: the in-process media source loaded by the Windows Frame Server
+    add_library(mtg-sim-vcam SHARED
+        src/vcam/win32_source/dllmain.cpp
+        src/vcam/win32_source/media_source.cpp
+        src/vcam/win32_source/media_stream.cpp
+    )
+    target_compile_features(mtg-sim-vcam PRIVATE cxx_std_20)
+    target_include_directories(mtg-sim-vcam PRIVATE src)
+    target_link_libraries(mtg-sim-vcam PRIVATE mfplat mfuuid ole32 oleaut32)
+    # Place the DLL alongside the exe so the app can find it at runtime
+    set_target_properties(mtg-sim-vcam PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+endif()
 
 # Make mtg-sim the default startup project in Visual Studio.
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT mtg-sim)

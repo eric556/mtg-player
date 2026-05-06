@@ -1,11 +1,9 @@
 #pragma once
 #include "game_state.hpp"
 #include "ui.hpp"
+#include "vcam/vcam.hpp"
 #include <SFML/Graphics.hpp>
-#include <cstdio>
-#include <cstdint>
-#include <string>
-#include <vector>
+#include <memory>
 
 // -- Playmat window (the public, stream-shared window) ----------------------
 
@@ -14,31 +12,27 @@ public:
     sf::RenderWindow window;
 
     explicit PlaymatWindow(GameState& gs);
-    ~PlaymatWindow();
 
     void handleEvent(const sf::Event& e);
     void render();
 
-    // Start piping frames to ffmpeg. output is any ffmpeg output path/URL.
-    // Call before the game loop. Stops any previously running pipe first.
-    void startVcam(const std::string& output, int fps = 30);
-    void stopVcam();
+    // Attach a Vcam implementation. Takes ownership. Call before the game loop.
+    // Pass nullptr to detach (stops and releases the current vcam).
+    void setVcam(std::unique_ptr<Vcam> vcam, int fps = 30);
 
 private:
     GameState& state_;
     sf::Font   font_;
     bool       font_loaded_ = false;
-    ContextMenu ctx_menu_;     // right-click on battlefield: zone actions
-    ContextMenu z_menu_;       // shift+right-click on battlefield: z-depth
-    ContextMenu cmd_ctx_menu_; // right-click on command zone card
+    ContextMenu ctx_menu_;
+    ContextMenu z_menu_;
+    ContextMenu cmd_ctx_menu_;
 
-    // Graveyard and exile viewers visible on the shared window.
     PileViewer gy_viewer_;
     PileViewer exile_viewer_;
     sf::FloatRect gy_rect_;
     sf::FloatRect exile_rect_;
 
-    // Live window dimensions and right-anchored pile centers - updated by reflow().
     float        w_ = 1280.f, h_ = 800.f;
     float        ui_scale_ = 1.0f;
     sf::Vector2f gy_ctr_, exile_ctr_;
@@ -48,11 +42,10 @@ private:
     int          last_click_idx_ = -1;
     sf::Clock    dbl_click_clock_;
 
-    // Virtual camera (ffmpeg pipe)
-    FILE*                    vcam_pipe_     = nullptr;
+    // Virtual camera
+    std::unique_ptr<Vcam>    vcam_;
     sf::Clock                vcam_clock_;
     float                    vcam_interval_ = 1.f / 30.f;
-    sf::Vector2u             vcam_size_;
     std::vector<std::uint8_t> vcam_buf_;
 
     void vcamCaptureFrame();
