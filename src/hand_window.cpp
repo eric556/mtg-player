@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 
-// ── HandWindow Implementation ──────────────────────────────────────────────
+// -- HandWindow Implementation ----------------------------------------------
 
 static bool tryLoadFont(sf::Font& font) {
     for (const char* path : {
@@ -20,7 +20,7 @@ static bool tryLoadFont(sf::Font& font) {
 
 HandWindow::HandWindow(GameState& gs) : state_(gs) {
     window.create(sf::VideoMode({900, 720}),
-                  "MTG Sim — Hand & Controls  [private]", sf::State::Windowed);
+                  "MTG Sim - Hand & Controls  [private]", sf::State::Windowed);
     window.setFramerateLimit(60);
     font_loaded_ = tryLoadFont(font_);
 
@@ -28,33 +28,39 @@ HandWindow::HandWindow(GameState& gs) : state_(gs) {
     btn_shuffle_.label = "Shuffle";
     btn_reset_.label   = "Reset Deck";
     btn_search_.label  = "Search Deck";
+    btn_view_top_.label = "View Top";
     btn_play_.label    = "Play Card";
 
     reflow(window.getSize());
-}
+    }
 
-void HandWindow::reflow(sf::Vector2u size) {
-    w_ = static_cast<float>(size.x);
-    h_ = static_cast<float>(size.y);
+    void HandWindow::reflow(sf::Vector2u size) {
+    w_ = static_cast<float>(size.x) / ui_scale_;
+    h_ = static_cast<float>(size.y) / ui_scale_;
 
-    // Buttons — left-anchored except Play which is right-anchored
+    // Buttons - left-anchored except Play which is right-anchored
     constexpr float bx = 20.f, by = 10.f, bh = 35.f;
-    btn_draw_.bounds    = {{bx,         by}, {80.f,  bh}};
-    btn_shuffle_.bounds = {{bx + 90.f,  by}, {80.f,  bh}};
-    btn_reset_.bounds   = {{bx + 180.f, by}, {100.f, bh}};
-    btn_search_.bounds  = {{bx + 290.f, by}, {100.f, bh}};
-    btn_play_.bounds    = {{w_ - 140.f, by}, {120.f, bh}};
+    btn_draw_.bounds     = {{bx,         by}, {80.f,  bh}};
+    btn_shuffle_.bounds  = {{bx + 90.f,  by}, {80.f,  bh}};
+    btn_reset_.bounds    = {{bx + 180.f, by}, {100.f, bh}};
+    btn_search_.bounds   = {{bx + 290.f, by}, {100.f, bh}};
+    btn_view_top_.bounds = {{bx + 400.f, by}, {85.f,  bh}};
+    btn_play_.bounds     = {{w_ - 140.f, by}, {120.f, bh}};
 
-    // Pile centers — deck left-anchored, others right-anchored
+    // Pile centers - deck left-anchored, others right-anchored
     pos_deck_  = {65.f,       160.f};
     pos_gy_    = {w_ - 65.f,  160.f};
     pos_exile_ = {w_ - 180.f, 160.f};
     pos_cmd_   = {w_ - 295.f, 160.f};
 
-    // Pile viewer fills most of the window with margins
-    pile_viewer_.overlay = {{40.f, 60.f}, {w_ - 80.f, h_ - 120.f}};
+    // Pile viewer: 50% width, full height with 40px padding
+    float pv_w = w_ * 0.5f;
+    float pv_h = h_ - 80.f;
+    float pv_x = (w_ - pv_w) / 2.f;
+    float pv_y = 40.f;
+    pile_viewer_.overlay = {{pv_x, pv_y}, {pv_w, pv_h}};
 
-    updateView(window);
+    updateView(window, ui_scale_);
 }
 
 sf::Vector2f HandWindow::handCardCenter(int idx) const {
@@ -77,7 +83,7 @@ int HandWindow::handCardAt(sf::Vector2f p) const {
 }
 
 void HandWindow::onMousePress(sf::Vector2f p) {
-    // ── PileViewer actions ───────────────────────────────────────────────
+    // -- PileViewer actions -----------------------------------------------
     if (pile_viewer_.visible) {
         auto act = pile_viewer_.handleClick(p);
         if (act.valid) {
@@ -88,7 +94,7 @@ void HandWindow::onMousePress(sf::Vector2f p) {
         return;
     }
 
-    // ── Hand context menu ────────────────────────────────────────────────
+    // -- Hand context menu ------------------------------------------------
     if (ctx_menu_.visible) {
         int item = ctx_menu_.hitTest(p);
         if (item >= 0) applyHandContextAction(item);
@@ -100,6 +106,7 @@ void HandWindow::onMousePress(sf::Vector2f p) {
     if (btn_shuffle_.contains(p)) { state_.shuffleDeck(); return; }
     if (btn_reset_.contains(p))   { state_.resetAll(); return; }
     if (btn_search_.contains(p))  { pile_viewer_.show("DECK", state_.deck, Zone::DECK); return; }
+    if (btn_view_top_.contains(p)) { state_.deck_top_visible = !state_.deck_top_visible; return; }
     if (btn_play_.contains(p)) {
         if (selected_hand_idx_ >= 0) {
             float off = static_cast<float>(state_.battlefield.size()) * 115.f;
@@ -165,6 +172,7 @@ void HandWindow::onMouseMove(sf::Vector2f p) {
     btn_shuffle_.hovered = btn_shuffle_.contains(p);
     btn_reset_.hovered   = btn_reset_.contains(p);
     btn_search_.hovered  = btn_search_.contains(p);
+    btn_view_top_.hovered = btn_view_top_.contains(p);
     btn_play_.hovered    = btn_play_.contains(p);
 }
 
@@ -182,6 +190,21 @@ void HandWindow::handleEvent(const sf::Event& e) {
     } else if (const auto* mws = e.getIf<sf::Event::MouseWheelScrolled>()) {
         if (mws->wheel == sf::Mouse::Wheel::Vertical)
             pile_viewer_.handleScroll(mws->delta);
+    } else if (const auto* kp = e.getIf<sf::Event::KeyPressed>()) {
+        bool ctrl = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) ||
+                    sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RControl);
+        if (ctrl) {
+            if (kp->code == sf::Keyboard::Key::Equal || kp->code == sf::Keyboard::Key::Add) {
+                ui_scale_ = std::min(3.0f, ui_scale_ * 1.1f);
+                reflow(window.getSize());
+            } else if (kp->code == sf::Keyboard::Key::Hyphen || kp->code == sf::Keyboard::Key::Subtract) {
+                ui_scale_ = std::max(0.5f, ui_scale_ / 1.1f);
+                reflow(window.getSize());
+            } else if (kp->code == sf::Keyboard::Key::Num0 || kp->code == sf::Keyboard::Key::Numpad0) {
+                ui_scale_ = 1.0f;
+                reflow(window.getSize());
+            }
+        }
     } else if (const auto* rs = e.getIf<sf::Event::Resized>()) {
         reflow(rs->size);
     }
@@ -205,6 +228,52 @@ void HandWindow::drawPileStack(sf::RenderTarget& target, sf::Vector2f center, in
     target.draw(cnt);
 }
 
+void HandWindow::drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const {
+    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt) &&
+        !sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RAlt)) return;
+
+    const Card* target_card = nullptr;
+
+    if (pile_viewer_.visible) {
+        if (pile_viewer_.hovered_idx >= 0 && pile_viewer_.hovered_idx < (int)pile_viewer_.cards.size())
+            target_card = pile_viewer_.cards[pile_viewer_.hovered_idx];
+    } else {
+        int hidx = handCardAt(mouse_pos);
+        if (hidx >= 0) target_card = &state_.hand[hidx];
+        else {
+            auto hitPile = [&](sf::Vector2f center, const std::vector<Card>& pile) -> const Card* {
+                if (sf::FloatRect({center.x - CARD_W/2.f, center.y - CARD_H/2.f}, {CARD_W, CARD_H}).contains(mouse_pos))
+                    return (pile.empty() || (&pile == &state_.deck && !state_.deck_top_visible)) ? nullptr : &pile.back();
+                return nullptr;
+            };
+            if (auto* c = hitPile(pos_deck_, state_.deck)) target_card = c;
+            else if (auto* c = hitPile(pos_gy_, state_.graveyard)) target_card = c;
+            else if (auto* c = hitPile(pos_exile_, state_.exile)) target_card = c;
+            else if (state_.commander_mode) {
+                if (auto* c = hitPile(pos_cmd_, state_.command_zone)) target_card = c;
+            }
+        }
+    }
+
+    if (target_card) {
+        constexpr float PS = 4.0f;
+        float pw = CARD_W * PS, ph = CARD_H * PS;
+        sf::Vector2f pp = mouse_pos + sf::Vector2f(20.f, 20.f);
+
+        if (pp.x + pw > w_) pp.x = mouse_pos.x - pw - 20.f;
+        if (pp.y + ph > h_) pp.y = h_ - ph - 10.f;
+        if (pp.x < 0.f) pp.x = 5.f;
+        if (pp.y < 0.f) pp.y = 5.f;
+
+        Card preview = *target_card;
+        preview.position  = pp + sf::Vector2f(pw / 2.f, ph / 2.f);
+        preview.scale     = PS;
+        preview.tapped    = false;
+        preview.face_down = false;
+        preview.draw(target, font);
+    }
+}
+
 void HandWindow::render() {
     if (!window.isOpen()) return;
     window.clear(sf::Color(25, 25, 35));
@@ -215,6 +284,11 @@ void HandWindow::render() {
     btn_shuffle_.draw(window, fp);
     btn_reset_.draw(window, fp);
     btn_search_.draw(window, fp);
+    
+    // Toggle label for View Top button
+    btn_view_top_.label = state_.deck_top_visible ? "Hide Top" : "View Top";
+    btn_view_top_.draw(window, fp);
+
     btn_play_.enabled = (selected_hand_idx_ >= 0);
     btn_play_.draw(window, fp);
 
@@ -270,6 +344,8 @@ void HandWindow::render() {
 
     if (pile_viewer_.visible) pile_viewer_.draw(window, fp);
     ctx_menu_.draw(window, fp);
+
+    drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
 
     window.display();
 }

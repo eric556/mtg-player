@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 
-// ── Button ─────────────────────────────────────────────────────────────────
+// -- Button -----------------------------------------------------------------
 
 void Button::draw(sf::RenderTarget& target, const sf::Font* font) const {
     sf::RectangleShape shape(bounds.size);
@@ -26,7 +26,7 @@ void Button::draw(sf::RenderTarget& target, const sf::Font* font) const {
     }
 }
 
-// ── ContextMenu ─────────────────────────────────────────────────────────────
+// -- ContextMenu -------------------------------------------------------------
 
 static constexpr float ITEM_H = 23.f;
 static constexpr float MENU_W = 200.f;
@@ -59,7 +59,7 @@ void ContextMenu::draw(sf::RenderTarget& target, const sf::Font* font) const
     }
 }
 
-// ── PileViewer ─────────────────────────────────────────────────────────────
+// -- PileViewer -------------------------------------------------------------
 
 // All destination zones in order, with labels and colours.
 struct ZoneInfo { Zone zone; DeckPos deck_pos; const char* label; sf::Color color; };
@@ -69,8 +69,8 @@ static const ZoneInfo ALL_ZONES[] = {
     { Zone::GRAVEYARD,    DeckPos::TOP,    "[Grave]",   {80,  30,  30} },
     { Zone::EXILE,        DeckPos::TOP,    "[Exile]",   {120, 80,   0} },
     { Zone::COMMAND_ZONE, DeckPos::TOP,    "[Cmd]",     {80,  40, 100} },
-    { Zone::DECK,         DeckPos::TOP,    "[Deck↑]",   {30,  80,  60} },
-    { Zone::DECK,         DeckPos::BOTTOM, "[Deck↓]",   {20,  60,  40} },
+    { Zone::DECK,         DeckPos::TOP,    "[DeckT]",   {30,  80,  60} },
+    { Zone::DECK,         DeckPos::BOTTOM, "[DeckB]",   {20,  60,  40} },
 };
 
 // Max 6 buttons shown at once (7 zones minus the current one, DECK counts as 1).
@@ -87,7 +87,7 @@ PileViewer::actionButtons(float btn_x, float row_y) const
     float x = btn_x;
     for (const auto& zi : ALL_ZONES) {
         // Skip if this destination is the same as where we're already viewing
-        // (allow both DECK↑ and DECK↓ to show when current_zone != DECK)
+        // (allow both DECK^ and DECKv to show when current_zone != DECK)
         bool is_self = (zi.zone == current_zone)
                     && !(zi.zone == Zone::DECK); // always allow deck dirs if not viewing deck
         if (current_zone == Zone::DECK && zi.zone == Zone::DECK) is_self = true;
@@ -239,7 +239,7 @@ void PileViewer::draw(sf::RenderTarget& target, const sf::Font* font) const
 
     drawScrollbar(target, total_content_h);
 
-    sf::Text hint(*font, "Hover a card for zone options  •  Click elsewhere to close", 11);
+    sf::Text hint(*font, "Hover a card for zone options  -  Click elsewhere to close", 11);
     hint.setFillColor(sf::Color(120, 120, 120));
     hint.setPosition({std::round(OX + 15.f), std::round(OY + OH - 20.f)});
     target.draw(hint);
@@ -249,12 +249,23 @@ void PileViewer::draw(sf::RenderTarget& target, const sf::Font* font) const
         const Card* c = cards[hovered_idx];
         constexpr float PS = 2.5f;
         float pw = CARD_W * PS, ph = CARD_H * PS;
-
-        sf::Vector2f pp = { OX + OW + 10.f, OY };
-        if (pp.x + pw > target.getView().getSize().x) pp.x = OX - pw - 10.f;
+        float vw = target.getView().getSize().x;
         float vh = target.getView().getSize().y;
-        if (pp.y < 0.f) pp.y = 0.f;
-        if (pp.y + ph > vh) pp.y = vh - ph - 10.f;
+
+        // Try right side first
+        sf::Vector2f pp = { OX + OW + 10.f, OY };
+        
+        // If it goes off-right, try left side
+        if (pp.x + pw > vw) {
+            pp.x = OX - pw - 10.f;
+        }
+        
+        // If it still goes off-left, or off-right (small window), clamp to screen edges
+        if (pp.x < 0.f) pp.x = 5.f;
+        if (pp.x + pw > vw) pp.x = vw - pw - 5.f;
+
+        if (pp.y < 0.f) pp.y = 5.f;
+        if (pp.y + ph > vh) pp.y = vh - ph - 5.f;
 
         Card preview = *c;
         preview.position  = pp + sf::Vector2f(pw / 2.f, ph / 2.f);

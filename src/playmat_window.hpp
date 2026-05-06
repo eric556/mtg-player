@@ -3,7 +3,7 @@
 #include "ui.hpp"
 #include <SFML/Graphics.hpp>
 
-// ── Playmat window (the public, stream-shared window) ──────────────────────
+// -- Playmat window (the public, stream-shared window) ----------------------
 
 class PlaymatWindow {
 public:
@@ -28,8 +28,9 @@ private:
     sf::FloatRect gy_rect_;
     sf::FloatRect exile_rect_;
 
-    // Live window dimensions and right-anchored pile centers — updated by reflow().
+    // Live window dimensions and right-anchored pile centers - updated by reflow().
     float        w_ = 1280.f, h_ = 800.f;
+    float        ui_scale_ = 1.0f;
     sf::Vector2f gy_ctr_, exile_ctr_;
 
     int          dragged_idx_    = -1;
@@ -48,4 +49,5 @@ private:
     void applyZAction(int item);
     void applyCmdContextAction(int item);
     int  cmdCardAt(sf::Vector2f p) const;
+    void drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const;
 };

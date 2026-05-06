@@ -20,6 +20,7 @@ struct GameState {
     int  life_total      = 20;
     int  dice_result     = 0;
     bool commander_mode  = false;
+    bool deck_top_visible = false;
 
     bool loadDeck(const std::string& path);
 

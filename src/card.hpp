@@ -10,9 +10,9 @@ enum class DeckPos { TOP, BOTTOM };
 
 class Card {
 public:
-    // ── Data ──────────────────────────────────────────────────────────────
+    // -- Data --------------------------------------------------------------
     std::string  name;
-    bool         is_commander = false; // identity field — never cleared by resetState
+    bool         is_commander = false; // identity field - never cleared by resetState
     bool         tapped     = false;
     bool         face_down  = false;
     int          counters   = 0;
@@ -31,7 +31,7 @@ public:
     bool         is_flying_cross_window = false;
     float        rotation              = 0.f;
 
-    // ── Methods ───────────────────────────────────────────────────────────
+    // -- Methods -----------------------------------------------------------
 
     // Strips all transient state (tapped, counters, animations, etc.)
     // leaving only identity data (name, textures).

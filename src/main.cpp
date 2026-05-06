@@ -6,28 +6,35 @@
 
 int main(int argc, char* argv[])
 {
-    if (argc < 2) {
-        std::cerr << "Usage: mtg-sim [--commander|-c] <deck.txt> [cache_dir]\n"
-                  << "  --commander / -c  First card in deck list becomes the commander\n"
-                  << "                    and starts in the command zone.\n"
-                  << "  Deck format (one entry per line):\n"
-                  << "    4 Lightning Bolt\n"
-                  << "    1x Black Lotus\n"
-                  << "    // comments are ignored\n";
-        return 1;
-    }
+    bool        commander_mode = false;
+    const char* deck_path      = nullptr;
+    const char* cache_path     = nullptr;
 
-    bool commander_mode = false;
-    const char* deck_path  = nullptr;
-    const char* cache_path = nullptr;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--commander" || a == "-c") { commander_mode = true; }
-        else if (!deck_path)                  deck_path  = argv[i];
-        else if (!cache_path)                 cache_path = argv[i];
+        if (a == "--commander" || a == "-c") {
+            commander_mode = true;
+        } else if ((a == "--deck" || a == "-d") && i + 1 < argc) {
+            deck_path = argv[++i];
+        } else if ((a == "--cache") && i + 1 < argc) {
+            cache_path = argv[++i];
+        } else {
+            std::cerr << "Unknown argument: " << a << "\n"
+                      << "Usage: mtg-sim --deck <deck.txt> [--cache <dir>] [--commander|-c]\n"
+                      << "  --deck / -d       Path to deck list file (required)\n"
+                      << "  --cache           Directory for caching card art\n"
+                      << "  --commander / -c  First card becomes the commander\n"
+                      << "  Deck format (one entry per line):\n"
+                      << "    4 Lightning Bolt\n"
+                      << "    1x Black Lotus\n"
+                      << "    // comments are ignored\n";
+            return 1;
+        }
     }
+
     if (!deck_path) {
-        std::cerr << "Error: no deck file specified.\n";
+        std::cerr << "Error: --deck <deck.txt> is required.\n"
+                  << "Usage: mtg-sim --deck <deck.txt> [--cache <dir>] [--commander|-c]\n";
         return 1;
     }
 
@@ -44,7 +51,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     std::cout << "Loaded " << state.deck.size()
-              << " cards from \"" << argv[1] << "\".\n";
+              << " cards from \"" << deck_path << "\".\n";
 
     HandWindow    hand_win(state);
     PlaymatWindow playmat_win(state);

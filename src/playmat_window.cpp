@@ -51,7 +51,7 @@ static const std::vector<std::string> Z_ITEMS = {
     "Move down one",
 };
 
-// ── Pile stack helper ──────────────────────────────────────────────────────
+// -- Pile stack helper ------------------------------------------------------
 
 static void drawPileStack(sf::RenderWindow& win, const sf::Font* font,
                            sf::Vector2f center, int count,
@@ -89,7 +89,7 @@ static void drawPileStack(sf::RenderWindow& win, const sf::Font* font,
     win.draw(lbl);
 }
 
-// ── PlaymatWindow ──────────────────────────────────────────────────────────
+// -- PlaymatWindow ----------------------------------------------------------
 
 static bool tryLoadFont(sf::Font& font)
 {
@@ -105,8 +105,8 @@ static bool tryLoadFont(sf::Font& font)
 }
 
 void PlaymatWindow::reflow(sf::Vector2u size) {
-    float new_w = static_cast<float>(size.x);
-    float new_h = static_cast<float>(size.y);
+    float new_w = static_cast<float>(size.x) / ui_scale_;
+    float new_h = static_cast<float>(size.y) / ui_scale_;
 
     // Remap battlefield card positions proportionally to the new window size
     if (w_ > 0.f && h_ > 0.f) {
@@ -126,16 +126,20 @@ void PlaymatWindow::reflow(sf::Vector2u size) {
     gy_rect_    = {{gy_ctr_.x    - CARD_W/2.f, gy_ctr_.y    - CARD_H/2.f}, {CARD_W, CARD_H}};
     exile_rect_ = {{exile_ctr_.x - CARD_W/2.f, exile_ctr_.y - CARD_H/2.f}, {CARD_W, CARD_H}};
 
-    // Pile viewers fill the window with margins
-    sf::FloatRect pv_overlay = {{180.f, 80.f}, {w_ - 260.f, h_ - 150.f}};
+    // Pile viewer: 50% width, full height with 40px padding
+    float pv_w = w_ * 0.5f;
+    float pv_h = h_ - 80.f;
+    float pv_x = (w_ - pv_w) / 2.f;
+    float pv_y = 40.f;
+    sf::FloatRect pv_overlay = {{pv_x, pv_y}, {pv_w, pv_h}};
     gy_viewer_.overlay    = pv_overlay;
     exile_viewer_.overlay = pv_overlay;
 
-    updateView(window);
+    updateView(window, ui_scale_);
 }
 
 PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
-    window.create(sf::VideoMode({1280, 800}), "MTG Sim — Playmat  [share this window]");
+    window.create(sf::VideoMode({1280, 800}), "MTG Sim - Playmat  [share this window]");
     window.setFramerateLimit(60);
     font_loaded_ = tryLoadFont(font_);
     reflow(window.getSize());
@@ -148,7 +152,7 @@ int PlaymatWindow::cardAt(sf::Vector2f p) const {
 }
 
 void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift) {
-    // ── PileViewer actions ─────────────────────────────────────────────
+    // -- PileViewer actions ---------------------------------------------
     if (gy_viewer_.visible) {
         auto act = gy_viewer_.handleClick(p);
         if (act.valid) {
@@ -319,8 +323,72 @@ void PlaymatWindow::handleEvent(const sf::Event& e) {
         if (ms->wheel == sf::Mouse::Wheel::Vertical) onMouseScroll(p, ms->delta);
     } else if (e.is<sf::Event::MouseButtonReleased>()) {
         onMouseRelease();
+    } else if (const auto* kp = e.getIf<sf::Event::KeyPressed>()) {
+        bool ctrl = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) ||
+                    sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RControl);
+        if (ctrl) {
+            if (kp->code == sf::Keyboard::Key::Equal || kp->code == sf::Keyboard::Key::Add) {
+                ui_scale_ = std::min(3.0f, ui_scale_ * 1.1f);
+                reflow(window.getSize());
+            } else if (kp->code == sf::Keyboard::Key::Hyphen || kp->code == sf::Keyboard::Key::Subtract) {
+                ui_scale_ = std::max(0.5f, ui_scale_ / 1.1f);
+                reflow(window.getSize());
+            } else if (kp->code == sf::Keyboard::Key::Num0 || kp->code == sf::Keyboard::Key::Numpad0) {
+                ui_scale_ = 1.0f;
+                reflow(window.getSize());
+            }
+        }
     } else if (const auto* rs = e.getIf<sf::Event::Resized>()) {
         reflow(rs->size);
+    }
+}
+
+void PlaymatWindow::drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const {
+    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt) &&
+        !sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RAlt)) return;
+
+    const Card* target_card = nullptr;
+
+    if (gy_viewer_.visible) {
+        if (gy_viewer_.hovered_idx >= 0 && gy_viewer_.hovered_idx < (int)gy_viewer_.cards.size())
+            target_card = gy_viewer_.cards[gy_viewer_.hovered_idx];
+    } else if (exile_viewer_.visible) {
+        if (exile_viewer_.hovered_idx >= 0 && exile_viewer_.hovered_idx < (int)exile_viewer_.cards.size())
+            target_card = exile_viewer_.cards[exile_viewer_.hovered_idx];
+    } else {
+        int idx = cardAt(mouse_pos);
+        if (idx >= 0) target_card = &state_.battlefield[idx];
+        else {
+            int cidx = cmdCardAt(mouse_pos);
+            if (cidx >= 0) target_card = &state_.command_zone[cidx];
+            else {
+                auto hitPile = [&](sf::Vector2f center, const std::vector<Card>& pile) -> const Card* {
+                    if (sf::FloatRect({center.x - CARD_W/2.f, center.y - CARD_H/2.f}, {CARD_W, CARD_H}).contains(mouse_pos))
+                        return (pile.empty() || (&pile == &state_.deck && !state_.deck_top_visible)) ? nullptr : &pile.back();
+                    return nullptr;
+                };
+                if (auto* c = hitPile(gy_ctr_, state_.graveyard)) target_card = c;
+                else if (auto* c = hitPile(exile_ctr_, state_.exile)) target_card = c;
+            }
+        }
+    }
+
+    if (target_card) {
+        constexpr float PS = 4.0f;
+        float pw = CARD_W * PS, ph = CARD_H * PS;
+        sf::Vector2f pp = mouse_pos + sf::Vector2f(20.f, 20.f);
+
+        if (pp.x + pw > w_) pp.x = mouse_pos.x - pw - 20.f;
+        if (pp.y + ph > h_) pp.y = h_ - ph - 10.f;
+        if (pp.x < 0.f) pp.x = 5.f;
+        if (pp.y < 0.f) pp.y = 5.f;
+
+        Card preview = *target_card;
+        preview.position  = pp + sf::Vector2f(pw / 2.f, ph / 2.f);
+        preview.scale     = PS;
+        preview.tapped    = false;
+        preview.face_down = false;
+        preview.draw(target, font);
     }
 }
 
@@ -329,7 +397,7 @@ void PlaymatWindow::render() {
     window.clear(sf::Color(34, 85, 34));
     const sf::Font* fp = font_loaded_ ? &font_ : nullptr;
     if (fp) {
-        sf::Text label(*fp, "PLAYMAT — share this window on stream", 11);
+        sf::Text label(*fp, "PLAYMAT - share this window on stream", 11);
         label.setFillColor(sf::Color(180, 220, 180, 150));
         label.setPosition({6.f, 4.f});
         window.draw(label);
@@ -398,7 +466,7 @@ void PlaymatWindow::render() {
     drawPileStack(window, fp, gy_ctr_,    (int)state_.graveyard.size(), "GY",    sf::Color(110, 45, 45, 210));
     drawPileStack(window, fp, exile_ctr_, (int)state_.exile.size(),     "EXILE", sf::Color(110, 80, 25, 210));
 
-    // ── Command zone (top-left) ───────────────────────────────────────────
+    // -- Command zone (top-left) -------------------------------------------
     if (state_.commander_mode) {
         if (state_.command_zone.empty()) {
             // Faint placeholder so the player can see the zone is there.
@@ -442,5 +510,8 @@ void PlaymatWindow::render() {
     cmd_ctx_menu_.draw(window, fp);
     gy_viewer_.draw(window, fp);
     exile_viewer_.draw(window, fp);
+
+    drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
+
     window.display();
 }

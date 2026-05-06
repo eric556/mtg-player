@@ -3,7 +3,7 @@
 #include <vector>
 #include <cmath>
 
-// ── Internal drawing implementation ────────────────────────────────────────
+// -- Internal drawing implementation ----------------------------------------
 // All geometry is in card-local space (origin = card center).
 // A single sf::Transform handles position, scale, and tap/custom rotation,
 // so counter badges and text automatically rotate with the card body.
@@ -18,7 +18,7 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
     tf.rotate(sf::degrees(card.rotation));
     const sf::RenderStates states(tf);
 
-    // ── Card body ─────────────────────────────────────────────────────────
+    // -- Card body ---------------------------------------------------------
     sf::RectangleShape body({CARD_W, CARD_H});
     body.setOrigin({CARD_W / 2.f, CARD_H / 2.f});
 

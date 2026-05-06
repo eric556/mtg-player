@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-// ── PileAction ────────────────────────────────────────────────────────────
+// -- PileAction ------------------------------------------------------------
 // Returned by PileViewer::handleClick(). `valid` is false if the click
 // closed the viewer without choosing a destination.
 
@@ -16,7 +16,7 @@ struct PileAction {
     DeckPos deck_pos = DeckPos::TOP;
 };
 
-// ── Button ────────────────────────────────────────────────────────────────
+// -- Button ----------------------------------------------------------------
 
 struct Button {
     sf::FloatRect bounds;
@@ -28,7 +28,7 @@ struct Button {
     void draw(sf::RenderTarget& target, const sf::Font* font) const;
 };
 
-// ── ContextMenu ───────────────────────────────────────────────────────────
+// -- ContextMenu -----------------------------------------------------------
 
 struct ContextMenu {
     bool         visible    = false;
@@ -44,7 +44,7 @@ struct ContextMenu {
     void draw(sf::RenderTarget& target, const sf::Font* font) const;
 };
 
-// ── PileViewer ────────────────────────────────────────────────────────────
+// -- PileViewer ------------------------------------------------------------
 
 struct PileViewer {
     bool                     visible      = false;

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-// ── Hand window (private — never share this) ───────────────────────────────
+// -- Hand window (private - never share this) -------------------------------
 
 class HandWindow {
 public:
@@ -25,12 +25,13 @@ private:
     ContextMenu ctx_menu_;   // right-click on hand cards
 
     // UI Buttons
-    Button btn_draw_, btn_shuffle_, btn_reset_, btn_search_, btn_play_;
+    Button btn_draw_, btn_shuffle_, btn_reset_, btn_search_, btn_play_, btn_view_top_;
 
     // Live window dimensions (updated by reflow on every resize).
     float w_ = 900.f, h_ = 720.f;
+    float ui_scale_ = 1.0f;
 
-    // Pile center positions — recomputed by reflow().
+    // Pile center positions - recomputed by reflow().
     sf::Vector2f pos_deck_, pos_gy_, pos_exile_, pos_cmd_;
 
     sf::Vector2f handCardCenter(int idx) const;
@@ -42,4 +43,5 @@ private:
     void         applyHandContextAction(int item);
     void         drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count,
                                const std::string& label, sf::Color back_col);
+    void         drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const;
 };

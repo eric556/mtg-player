@@ -25,16 +25,16 @@ The binary ends up at `build/bin/Release/mtg-sim` (Linux: `build/bin/mtg-sim`).
 ## Usage
 
 ```
-mtg-sim <deck-file> [cache-dir] [--commander | -c]
+mtg-sim --deck <deck.txt> [--cache <dir>] [--commander | -c]
 ```
 
-- `deck-file` — plain text file, one card name per line
-- `cache-dir` — optional directory for caching card art fetched from Scryfall
+- `--deck` / `-d` — path to deck list file (required)
+- `--cache` — optional directory for caching card art fetched from Scryfall
 - `--commander` / `-c` — treat the first card in the list as the commander; it starts in the command zone instead of the deck
 
 **Example:**
 ```
-mtg-sim my_deck.txt ./cache --commander
+mtg-sim --deck my_deck.txt --cache ./cache --commander
 ```
 
 ## Controls
