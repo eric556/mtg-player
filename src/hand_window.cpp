@@ -1,26 +1,10 @@
 #include "hand_window.hpp"
+#include "window_utils.hpp"
 #include "card.hpp"
 #include <algorithm>
 #include <cstdio>
 
 // ── HandWindow Implementation ──────────────────────────────────────────────
-
-static void updateView(sf::RenderWindow& win, float vw, float vh) {
-    auto ws = win.getSize();
-    float winRatio  = static_cast<float>(ws.x) / static_cast<float>(ws.y);
-    float virtRatio = vw / vh;
-    sf::FloatRect vp;
-    if (winRatio > virtRatio) {
-        float s = virtRatio / winRatio;
-        vp = sf::FloatRect({(1.f - s) / 2.f, 0.f}, {s, 1.f});
-    } else {
-        float s = winRatio / virtRatio;
-        vp = sf::FloatRect({0.f, (1.f - s) / 2.f}, {1.f, s});
-    }
-    sf::View view(sf::FloatRect({0.f, 0.f}, {vw, vh}));
-    view.setViewport(vp);
-    win.setView(view);
-}
 
 static bool tryLoadFont(sf::Font& font) {
     for (const char* path : {
@@ -38,39 +22,49 @@ HandWindow::HandWindow(GameState& gs) : state_(gs) {
     window.create(sf::VideoMode({900, 720}),
                   "MTG Sim — Hand & Controls  [private]", sf::State::Windowed);
     window.setFramerateLimit(60);
-    updateView(window, WIN_W, WIN_H);
     font_loaded_ = tryLoadFont(font_);
 
-    // Initial button setup
-    btn_draw_.label = "Draw";
+    btn_draw_.label    = "Draw";
     btn_shuffle_.label = "Shuffle";
-    btn_reset_.label = "Reset Deck";
-    btn_search_.label = "Search Deck";
-    btn_play_.label = "Play Card";
-    updateButtonLayout();
+    btn_reset_.label   = "Reset Deck";
+    btn_search_.label  = "Search Deck";
+    btn_play_.label    = "Play Card";
 
-    pile_viewer_.overlay = sf::FloatRect({80.f, 90.f}, {740.f, 540.f});
+    reflow(window.getSize());
 }
 
-void HandWindow::updateButtonLayout() {
-    float x = 20.f;
-    float y = 10.f;
-    float h = 35.f;
-    
-    btn_draw_.bounds    = sf::FloatRect({x, y}, {80.f, h});
-    btn_shuffle_.bounds = sf::FloatRect({x + 90.f, y}, {80.f, h});
-    btn_reset_.bounds   = sf::FloatRect({x + 180.f, y}, {100.f, h});
-    btn_search_.bounds  = sf::FloatRect({x + 290.f, y}, {100.f, h});
-    btn_play_.bounds    = sf::FloatRect({WIN_W - 140.f, y}, {120.f, h});
+void HandWindow::reflow(sf::Vector2u size) {
+    w_ = static_cast<float>(size.x);
+    h_ = static_cast<float>(size.y);
+
+    // Buttons — left-anchored except Play which is right-anchored
+    constexpr float bx = 20.f, by = 10.f, bh = 35.f;
+    btn_draw_.bounds    = {{bx,         by}, {80.f,  bh}};
+    btn_shuffle_.bounds = {{bx + 90.f,  by}, {80.f,  bh}};
+    btn_reset_.bounds   = {{bx + 180.f, by}, {100.f, bh}};
+    btn_search_.bounds  = {{bx + 290.f, by}, {100.f, bh}};
+    btn_play_.bounds    = {{w_ - 140.f, by}, {120.f, bh}};
+
+    // Pile centers — deck left-anchored, others right-anchored
+    pos_deck_  = {65.f,       160.f};
+    pos_gy_    = {w_ - 65.f,  160.f};
+    pos_exile_ = {w_ - 180.f, 160.f};
+    pos_cmd_   = {w_ - 295.f, 160.f};
+
+    // Pile viewer fills most of the window with margins
+    pile_viewer_.overlay = {{40.f, 60.f}, {w_ - 80.f, h_ - 120.f}};
+
+    updateView(window);
 }
 
 sf::Vector2f HandWindow::handCardCenter(int idx) const {
     int   count   = static_cast<int>(state_.hand.size());
-    if (count == 0) return {WIN_W / 2.f, 590.f};
-    float slot_w  = std::min(CARD_W + 10.f, (WIN_W - 40.f) / static_cast<float>(count));
+    float hand_y  = h_ - 130.f;
+    if (count == 0) return {w_ / 2.f, hand_y};
+    float slot_w  = std::min(CARD_W + 10.f, (w_ - 40.f) / static_cast<float>(count));
     float total_w = static_cast<float>(count) * slot_w;
-    float start_x = (WIN_W - total_w) / 2.f + slot_w / 2.f;
-    return {start_x + idx * slot_w, 590.f};
+    float start_x = (w_ - total_w) / 2.f + slot_w / 2.f;
+    return {start_x + idx * slot_w, hand_y};
 }
 
 int HandWindow::handCardAt(sf::Vector2f p) const {
@@ -89,12 +83,12 @@ void HandWindow::onMousePress(sf::Vector2f p) {
         if (act.valid) {
             state_.moveCard(act.from, act.index, act.to, act.deck_pos);
             if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {640.f, 400.f}; // playmat center
+                state_.battlefield.back().position = {640.f, 400.f};
         }
         return;
     }
 
-    // ── Hand context menu ──────────────────────────────────────────────
+    // ── Hand context menu ────────────────────────────────────────────────
     if (ctx_menu_.visible) {
         int item = ctx_menu_.hitTest(p);
         if (item >= 0) applyHandContextAction(item);
@@ -118,14 +112,15 @@ void HandWindow::onMousePress(sf::Vector2f p) {
     }
 
     // Pile clicks
-    auto checkPile = [&](sf::Vector2f center, const char* zone) {
-        sf::FloatRect r({center.x - CARD_W/2.f, center.y - CARD_H/2.f}, {CARD_W, CARD_H});
-        return r.contains(p);
+    auto hitPile = [&](sf::Vector2f center) {
+        return sf::FloatRect({center.x - CARD_W/2.f, center.y - CARD_H/2.f}, {CARD_W, CARD_H}).contains(p);
     };
 
-    if (checkPile({65.f, 160.f}, "DECK")) { state_.drawCard(); return; }
-    if (checkPile({835.f, 160.f}, "GY"))   { pile_viewer_.show("GRAVEYARD", state_.graveyard, Zone::GRAVEYARD); return; }
-    if (checkPile({720.f, 160.f}, "EXILE")) { pile_viewer_.show("EXILE", state_.exile, Zone::EXILE); return; }
+    if (hitPile(pos_deck_))  { state_.drawCard(); return; }
+    if (hitPile(pos_gy_))    { pile_viewer_.show("GRAVEYARD",    state_.graveyard,    Zone::GRAVEYARD);    return; }
+    if (hitPile(pos_exile_)) { pile_viewer_.show("EXILE",        state_.exile,        Zone::EXILE);        return; }
+    if (state_.commander_mode && hitPile(pos_cmd_))
+        { pile_viewer_.show("COMMAND ZONE", state_.command_zone, Zone::COMMAND_ZONE); return; }
 
     int idx = handCardAt(p);
     if (idx >= 0) {
@@ -162,15 +157,15 @@ void HandWindow::applyHandContextAction(int item) {
         case 2: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::TOP);    break;
         case 3: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM); break;
     }
-    selected_hand_idx_ = -1;  // clear selection if card was moved
+    selected_hand_idx_ = -1;
 }
 
 void HandWindow::onMouseMove(sf::Vector2f p) {
-    btn_draw_.hovered = btn_draw_.contains(p);
+    btn_draw_.hovered    = btn_draw_.contains(p);
     btn_shuffle_.hovered = btn_shuffle_.contains(p);
-    btn_reset_.hovered = btn_reset_.contains(p);
-    btn_search_.hovered = btn_search_.contains(p);
-    btn_play_.hovered = btn_play_.contains(p);
+    btn_reset_.hovered   = btn_reset_.contains(p);
+    btn_search_.hovered  = btn_search_.contains(p);
+    btn_play_.hovered    = btn_play_.contains(p);
 }
 
 void HandWindow::handleEvent(const sf::Event& e) {
@@ -185,15 +180,15 @@ void HandWindow::handleEvent(const sf::Event& e) {
         onMouseMove(p);
         pile_viewer_.handleMouseMove(p);
     } else if (const auto* mws = e.getIf<sf::Event::MouseWheelScrolled>()) {
-        if (mws->wheel == sf::Mouse::Wheel::Vertical) {
+        if (mws->wheel == sf::Mouse::Wheel::Vertical)
             pile_viewer_.handleScroll(mws->delta);
-        }
-    } else if (e.is<sf::Event::Resized>()) {
-        updateView(window, WIN_W, WIN_H);
+    } else if (const auto* rs = e.getIf<sf::Event::Resized>()) {
+        reflow(rs->size);
     }
 }
 
-void HandWindow::drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count, const std::string& label, sf::Color back_col) {
+void HandWindow::drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count,
+                               const std::string& label, sf::Color back_col) {
     sf::RectangleShape top({CARD_W, CARD_H});
     top.setOrigin({CARD_W / 2.f, CARD_H / 2.f});
     top.setPosition(center);
@@ -213,11 +208,9 @@ void HandWindow::drawPileStack(sf::RenderTarget& target, sf::Vector2f center, in
 void HandWindow::render() {
     if (!window.isOpen()) return;
     window.clear(sf::Color(25, 25, 35));
-    updateView(window, WIN_W, WIN_H);
-    
+
     const sf::Font* fp = font_loaded_ ? &font_ : nullptr;
-    
-    // UI
+
     btn_draw_.draw(window, fp);
     btn_shuffle_.draw(window, fp);
     btn_reset_.draw(window, fp);
@@ -226,37 +219,38 @@ void HandWindow::render() {
     btn_play_.draw(window, fp);
 
     // Piles
-    drawPileStack(window, {65.f, 160.f}, (int)state_.deck.size(), "DECK", sf::Color(30, 30, 110));
-    drawPileStack(window, {835.f, 160.f}, (int)state_.graveyard.size(), "GRAVEYARD", sf::Color(80, 40, 40));
-    drawPileStack(window, {720.f, 160.f}, (int)state_.exile.size(), "EXILE", sf::Color(80, 60, 20));
+    drawPileStack(window, pos_deck_,  (int)state_.deck.size(),         "DECK",  sf::Color(30,  30, 110));
+    drawPileStack(window, pos_gy_,    (int)state_.graveyard.size(),    "GRAVE", sf::Color(80,  40,  40));
+    drawPileStack(window, pos_exile_, (int)state_.exile.size(),        "EXILE", sf::Color(80,  60,  20));
+    if (state_.commander_mode)
+        drawPileStack(window, pos_cmd_, (int)state_.command_zone.size(), "CMD", sf::Color(70, 30, 100));
 
     static sf::Clock frame_clock;
     float dt = frame_clock.restart().asSeconds();
 
-    // Hand
+    // Hand cards
     for (int i = 0; i < (int)state_.hand.size(); ++i) {
         sf::Vector2f center = handCardCenter(i);
         if (state_.hand[i].is_animating) {
             state_.hand[i].anim_timer += dt;
-            float anim_duration = 0.3f;
+            constexpr float anim_duration = 0.3f;
             if (state_.hand[i].anim_timer > anim_duration) {
                 state_.hand[i].is_animating = false;
             } else {
-                float t = state_.hand[i].anim_timer / anim_duration;
+                float t    = state_.hand[i].anim_timer / anim_duration;
                 float ease = 1.0f - std::pow(1.0f - t, 3.0f);
-                sf::Vector2f start_pos = {65.f, 160.f}; // Deck pile position
-                center = start_pos + (center - start_pos) * ease;
+                center = pos_deck_ + (center - pos_deck_) * ease;
             }
         }
         state_.hand[i].draw(window, fp, center);
     }
-    
-    // Preview selected card
+
+    // Preview selected card (centered, upper half)
     if (selected_hand_idx_ >= 0 && selected_hand_idx_ < (int)state_.hand.size()) {
         Card preview = state_.hand[selected_hand_idx_];
-        preview.scale = 2.5f;
-        preview.selected = false; // outline is not needed for the preview
-        preview.draw(window, fp, {WIN_W / 2.f, 350.f});
+        preview.scale    = 2.5f;
+        preview.selected = false;
+        preview.draw(window, fp, {w_ / 2.f, h_ * 0.42f});
     }
 
     // Cross-window flying cards
@@ -264,18 +258,13 @@ void HandWindow::render() {
         if (card.is_flying_cross_window) {
             float t = card.anim_timer / 0.6f;
             if (t > 1.0f) t = 1.0f;
-            
-            sf::Vector2i current_global = {
+            sf::Vector2i cur = {
                 (int)(card.start_desktop_pos.x + (card.end_desktop_pos.x - card.start_desktop_pos.x) * t),
                 (int)(card.start_desktop_pos.y + (card.end_desktop_pos.y - card.start_desktop_pos.y) * t)
             };
-            
-            sf::Vector2i local_pixel = current_global - window.getPosition();
-            
-            // Draw a copy of the card mapped to this window
-            Card cross_card = card;
-            cross_card.position = window.mapPixelToCoords(local_pixel);
-            cross_card.draw(window, fp);
+            Card cross = card;
+            cross.position = window.mapPixelToCoords(cur - window.getPosition());
+            cross.draw(window, fp);
         }
     }
 

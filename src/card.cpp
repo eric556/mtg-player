@@ -34,9 +34,12 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
         }
     } else {
         body.setFillColor(sf::Color(245, 235, 200));
-        body.setOutlineColor(card.selected ? sf::Color::Yellow
-                                           : sf::Color(50, 30, 10));
-        body.setOutlineThickness(card.selected ? 3.f : 1.5f);
+        if (card.selected)
+            { body.setOutlineColor(sf::Color::Yellow);          body.setOutlineThickness(3.f);  }
+        else if (card.is_commander)
+            { body.setOutlineColor(sf::Color(218, 165, 32));    body.setOutlineThickness(2.5f); }
+        else
+            { body.setOutlineColor(sf::Color(50, 30, 10));      body.setOutlineThickness(1.5f); }
         if (card.art_texture) {
             body.setTexture(card.art_texture);
             body.setFillColor(sf::Color::White);

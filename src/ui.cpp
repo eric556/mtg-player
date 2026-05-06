@@ -64,17 +64,20 @@ void ContextMenu::draw(sf::RenderTarget& target, const sf::Font* font) const
 // All destination zones in order, with labels and colours.
 struct ZoneInfo { Zone zone; DeckPos deck_pos; const char* label; sf::Color color; };
 static const ZoneInfo ALL_ZONES[] = {
-    { Zone::HAND,        DeckPos::TOP,    "[Hand]",   {50,  50, 150} },
-    { Zone::BATTLEFIELD, DeckPos::TOP,    "[Play]",   {150, 50,  50} },
-    { Zone::GRAVEYARD,   DeckPos::TOP,    "[Grave]",  {80,  30,  30} },
-    { Zone::EXILE,       DeckPos::TOP,    "[Exile]",  {120, 80,   0} },
-    { Zone::DECK,        DeckPos::TOP,    "[Deck Top]",  {30,  80,  60} },
-    { Zone::DECK,        DeckPos::BOTTOM, "[Deck Btm]",  {20,  60,  40} },
+    { Zone::HAND,         DeckPos::TOP,    "[Hand]",    {50,  50, 150} },
+    { Zone::BATTLEFIELD,  DeckPos::TOP,    "[Play]",    {150, 50,  50} },
+    { Zone::GRAVEYARD,    DeckPos::TOP,    "[Grave]",   {80,  30,  30} },
+    { Zone::EXILE,        DeckPos::TOP,    "[Exile]",   {120, 80,   0} },
+    { Zone::COMMAND_ZONE, DeckPos::TOP,    "[Cmd]",     {80,  40, 100} },
+    { Zone::DECK,         DeckPos::TOP,    "[Deck↑]",   {30,  80,  60} },
+    { Zone::DECK,         DeckPos::BOTTOM, "[Deck↓]",   {20,  60,  40} },
 };
 
-static constexpr float BTN_W = 52.f;
-static constexpr float BTN_H = 15.f;
-static constexpr float BTN_PAD = 4.f;
+// Max 6 buttons shown at once (7 zones minus the current one, DECK counts as 1).
+// 6 × (46 + 3) − 3 = 291 px — fits comfortably in btn_x = OW − 305.
+static constexpr float BTN_W   = 46.f;
+static constexpr float BTN_H   = 15.f;
+static constexpr float BTN_PAD =  3.f;
 
 // Build the list of action buttons for the current zone, excluding self.
 std::vector<PileViewer::ActionBtn>
@@ -113,7 +116,7 @@ PileAction PileViewer::handleClick(sf::Vector2f p)
     if (overlay.contains(p) && hovered_idx >= 0 && hovered_idx < (int)cards.size()) {
         float list_top = overlay.position.y + 40.f;
         float row_y    = list_top + (hovered_idx * 18.f) - scroll_offset;
-        float btn_x    = overlay.position.x + overlay.size.x - 310.f;
+        float btn_x    = overlay.position.x + overlay.size.x - 305.f;
 
         for (const auto& btn : actionButtons(btn_x, row_y)) {
             if (btn.rect.contains(p)) {
@@ -200,7 +203,7 @@ void PileViewer::draw(sf::RenderTarget& target, const sf::Font* font) const
         target.draw(row);
 
         if (hov) {
-            float btn_x = OX + OW - 310.f;
+            float btn_x = OX + OW - 305.f;
             auto  btns  = actionButtons(btn_x, y);
             int   bi    = 0;
             for (const auto& btn : btns) {

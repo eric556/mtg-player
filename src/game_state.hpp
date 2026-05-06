@@ -15,9 +15,11 @@ struct GameState {
     std::vector<Card> battlefield;
     std::vector<Card> graveyard;
     std::vector<Card> exile;
+    std::vector<Card> command_zone;
 
-    int life_total  = 20;
-    int dice_result = 0;
+    int  life_total      = 20;
+    int  dice_result     = 0;
+    bool commander_mode  = false;
 
     bool loadDeck(const std::string& path);
 

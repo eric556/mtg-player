@@ -1,25 +1,10 @@
 #include "playmat_window.hpp"
+#include "window_utils.hpp"
 #include "card.hpp"
 #include <array>
 
-// ── Virtual coordinate space ───────────────────────────────────────────────
-
-static constexpr float PLAYMAT_W = 1280.f;
-static constexpr float PLAYMAT_H = 800.f;
-
-// GY and exile piles sit in the top-right corner of the playmat.
-static constexpr float PM_GY_CX    = 1190.f, PM_GY_CY    = 100.f;
-static constexpr float PM_EXILE_CX = 1075.f, PM_EXILE_CY = 100.f;
-
-// ── Letterbox view helper ──────────────────────────────────────────────────
-
-static void updateView(sf::RenderWindow& win)
-{
-    auto sz = win.getSize();
-    win.setView(sf::View(sf::FloatRect(
-        {0.f, 0.f},
-        {static_cast<float>(sz.x), static_cast<float>(sz.y)})));
-}
+// Command zone sits in the top-left corner — left-anchored, so position is fixed.
+static constexpr float PM_CMD_CX = 65.f, PM_CMD_CY = 100.f;
 
 // Main right-click menu (zone actions + card state)
 enum CtxItem {
@@ -36,6 +21,23 @@ static const std::vector<std::string> CTX_ITEMS = {
     "To bottom of deck",
     "Add counter",
     "Remove counter",
+};
+
+// Right-click menu on command zone cards
+enum CmdCtxItem {
+    CMD_TO_BF = 0, CMD_TO_HAND, CMD_TO_GY, CMD_TO_EXILE,
+    CMD_TO_DECK_TOP, CMD_TO_DECK_BOT,
+    CMD_ADD_CTR, CMD_REM_CTR,
+};
+static const std::vector<std::string> CMD_ITEMS = {
+    "Move to battlefield",
+    "Return to hand",
+    "Send to graveyard",
+    "Send to exile",
+    "To top of deck",
+    "To bottom of deck",
+    "Add counter (tax)",
+    "Remove counter (tax)",
 };
 
 // Shift+right-click menu (z-depth ordering only)
@@ -102,16 +104,41 @@ static bool tryLoadFont(sf::Font& font)
     return false;
 }
 
-PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
-    window.create(sf::VideoMode({static_cast<unsigned>(PLAYMAT_W), static_cast<unsigned>(PLAYMAT_H)}),
-                  "MTG Sim — Playmat  [share this window]");
-    window.setFramerateLimit(60);
+void PlaymatWindow::reflow(sf::Vector2u size) {
+    float new_w = static_cast<float>(size.x);
+    float new_h = static_cast<float>(size.y);
+
+    // Remap battlefield card positions proportionally to the new window size
+    if (w_ > 0.f && h_ > 0.f) {
+        float sx = new_w / w_, sy = new_h / h_;
+        for (auto& card : state_.battlefield)
+            if (!card.is_animating && !card.is_flying_cross_window)
+                card.position = {card.position.x * sx, card.position.y * sy};
+    }
+
+    w_ = new_w;
+    h_ = new_h;
+
+    // GY and exile anchored to top-right
+    gy_ctr_    = {w_ - 90.f,  100.f};
+    exile_ctr_ = {w_ - 205.f, 100.f};
+
+    gy_rect_    = {{gy_ctr_.x    - CARD_W/2.f, gy_ctr_.y    - CARD_H/2.f}, {CARD_W, CARD_H}};
+    exile_rect_ = {{exile_ctr_.x - CARD_W/2.f, exile_ctr_.y - CARD_H/2.f}, {CARD_W, CARD_H}};
+
+    // Pile viewers fill the window with margins
+    sf::FloatRect pv_overlay = {{180.f, 80.f}, {w_ - 260.f, h_ - 150.f}};
+    gy_viewer_.overlay    = pv_overlay;
+    exile_viewer_.overlay = pv_overlay;
+
     updateView(window);
+}
+
+PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
+    window.create(sf::VideoMode({1280, 800}), "MTG Sim — Playmat  [share this window]");
+    window.setFramerateLimit(60);
     font_loaded_ = tryLoadFont(font_);
-    gy_rect_    = sf::FloatRect({PM_GY_CX - CARD_W/2.f, PM_GY_CY - CARD_H/2.f}, {CARD_W, CARD_H});
-    exile_rect_ = sf::FloatRect({PM_EXILE_CX - CARD_W/2.f, PM_EXILE_CY - CARD_H/2.f}, {CARD_W, CARD_H});
-    gy_viewer_.overlay    = sf::FloatRect({200.f, 100.f}, {880.f, 600.f});
-    exile_viewer_.overlay = sf::FloatRect({200.f, 100.f}, {880.f, 600.f});
+    reflow(window.getSize());
 }
 
 int PlaymatWindow::cardAt(sf::Vector2f p) const {
@@ -127,7 +154,7 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
         if (act.valid) {
             state_.moveCard(act.from, act.index, act.to, act.deck_pos);
             if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
+                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
         }
         return;
     }
@@ -136,22 +163,24 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
         if (act.valid) {
             state_.moveCard(act.from, act.index, act.to, act.deck_pos);
             if (act.to == Zone::BATTLEFIELD && !state_.battlefield.empty())
-                state_.battlefield.back().position = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
+                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
         }
         return;
     }
     if (btn == sf::Mouse::Button::Right) {
-        ctx_menu_.hide(); z_menu_.hide();
+        ctx_menu_.hide(); z_menu_.hide(); cmd_ctx_menu_.hide();
+        // Check command zone first (top-left, doesn't overlap battlefield).
+        int cidx = cmdCardAt(p);
+        if (cidx >= 0) { cmd_ctx_menu_.show(p, cidx, CMD_ITEMS); return; }
         int idx = cardAt(p);
         if (idx < 0) return;
         if (shift)
-            z_menu_.show(p, idx, Z_ITEMS);     // Shift+RClick → z-depth menu
+            z_menu_.show(p, idx, Z_ITEMS);
         else
-            ctx_menu_.show(p, idx, CTX_ITEMS); // RClick → zone/action menu
+            ctx_menu_.show(p, idx, CTX_ITEMS);
         return;
     }
     if (btn == sf::Mouse::Button::Left) {
-        // Close any open menu on left-click, applying the selected item first.
         if (ctx_menu_.visible) {
             int item = ctx_menu_.hitTest(p);
             if (item >= 0) applyContextAction(item);
@@ -161,6 +190,11 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
             int item = z_menu_.hitTest(p);
             if (item >= 0) applyZAction(item);
             z_menu_.hide(); return;
+        }
+        if (cmd_ctx_menu_.visible) {
+            int item = cmd_ctx_menu_.hitTest(p);
+            if (item >= 0) applyCmdContextAction(item);
+            cmd_ctx_menu_.hide(); return;
         }
         if (gy_rect_.contains(p) && !state_.graveyard.empty()) { gy_viewer_.show("Graveyard", state_.graveyard, Zone::GRAVEYARD); return; }
         if (exile_rect_.contains(p) && !state_.exile.empty()) { exile_viewer_.show("Exile", state_.exile, Zone::EXILE); return; }
@@ -238,6 +272,32 @@ void PlaymatWindow::applyZAction(int item) {
     }
 }
 
+int PlaymatWindow::cmdCardAt(sf::Vector2f p) const {
+    for (int i = (int)state_.command_zone.size() - 1; i >= 0; --i)
+        if (state_.command_zone[i].contains(p)) return i;
+    return -1;
+}
+
+void PlaymatWindow::applyCmdContextAction(int item) {
+    int idx = cmd_ctx_menu_.target_idx;
+    if (idx < 0 || idx >= (int)state_.command_zone.size()) return;
+    switch (item) {
+        case CMD_TO_BF: {
+            state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::BATTLEFIELD);
+            if (!state_.battlefield.empty())
+                state_.battlefield.back().position = {w_ / 2.f, h_ / 2.f};
+            break;
+        }
+        case CMD_TO_HAND:     state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::HAND);                    break;
+        case CMD_TO_GY:       state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::GRAVEYARD);               break;
+        case CMD_TO_EXILE:    state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::EXILE);                   break;
+        case CMD_TO_DECK_TOP: state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::DECK, DeckPos::TOP);      break;
+        case CMD_TO_DECK_BOT: state_.moveCard(Zone::COMMAND_ZONE, idx, Zone::DECK, DeckPos::BOTTOM);   break;
+        case CMD_ADD_CTR:     state_.command_zone[idx].counters++;                                     break;
+        case CMD_REM_CTR:     state_.command_zone[idx].counters--;                                     break;
+    }
+}
+
 void PlaymatWindow::handleEvent(const sf::Event& e) {
     if (const auto* mb = e.getIf<sf::Event::MouseButtonPressed>()) {
         auto p     = window.mapPixelToCoords(mb->position);
@@ -251,8 +311,8 @@ void PlaymatWindow::handleEvent(const sf::Event& e) {
         if (ms->wheel == sf::Mouse::Wheel::Vertical) onMouseScroll(p, ms->delta);
     } else if (e.is<sf::Event::MouseButtonReleased>()) {
         onMouseRelease();
-    } else if (e.is<sf::Event::Resized>()) {
-        updateView(window);
+    } else if (const auto* rs = e.getIf<sf::Event::Resized>()) {
+        reflow(rs->size);
     }
 }
 
@@ -301,8 +361,8 @@ void PlaymatWindow::render() {
             float hang_duration = 1.0f;
             float settle_duration = 0.4f;
             
-            sf::Vector2f center = {PLAYMAT_W / 2.f, PLAYMAT_H / 2.f};
-            sf::Vector2f bottom = {PLAYMAT_W / 2.f, PLAYMAT_H + 300.f};
+            sf::Vector2f center = {w_ / 2.f, h_ / 2.f};
+            sf::Vector2f bottom = {w_ / 2.f, h_ + 300.f};
 
             if (card.anim_timer <= fly_in_duration) {
                 float t = card.anim_timer / fly_in_duration;
@@ -327,8 +387,35 @@ void PlaymatWindow::render() {
         }
         card.draw(window, fp);
     }
-    drawPileStack(window, fp, {PM_GY_CX, PM_GY_CY}, static_cast<int>(state_.graveyard.size()), "GY", sf::Color(110, 45, 45, 210));
-    drawPileStack(window, fp, {PM_EXILE_CX, PM_EXILE_CY}, static_cast<int>(state_.exile.size()), "EXILE", sf::Color(110, 80, 25, 210));
+    drawPileStack(window, fp, gy_ctr_,    (int)state_.graveyard.size(), "GY",    sf::Color(110, 45, 45, 210));
+    drawPileStack(window, fp, exile_ctr_, (int)state_.exile.size(),     "EXILE", sf::Color(110, 80, 25, 210));
+
+    // ── Command zone (top-left) ───────────────────────────────────────────
+    if (state_.commander_mode) {
+        if (state_.command_zone.empty()) {
+            // Faint placeholder so the player can see the zone is there.
+            sf::RectangleShape outline({CARD_W, CARD_H});
+            outline.setOrigin({CARD_W / 2.f, CARD_H / 2.f});
+            outline.setPosition({PM_CMD_CX, PM_CMD_CY});
+            outline.setFillColor(sf::Color(0, 0, 0, 0));
+            outline.setOutlineColor(sf::Color(150, 100, 200, 80));
+            outline.setOutlineThickness(1.5f);
+            window.draw(outline);
+            if (fp) {
+                sf::Text lbl(*fp, "CMD", 11);
+                lbl.setFillColor(sf::Color(150, 100, 200, 130));
+                sf::FloatRect lb = lbl.getLocalBounds();
+                lbl.setOrigin({lb.position.x + lb.size.x / 2.f, lb.position.y + lb.size.y});
+                lbl.setPosition({PM_CMD_CX, PM_CMD_CY - CARD_H / 2.f - 4.f});
+                window.draw(lbl);
+            }
+        } else {
+            for (int i = 0; i < (int)state_.command_zone.size(); ++i) {
+                state_.command_zone[i].position = {PM_CMD_CX + i * (CARD_W + 10.f), PM_CMD_CY};
+                state_.command_zone[i].draw(window, fp);
+            }
+        }
+    }
     if (fp) {
         auto hint = [&](float cx, float cy, bool show) {
             if (!show) return;
@@ -339,11 +426,12 @@ void PlaymatWindow::render() {
             h.setPosition({std::round(cx), std::round(cy + CARD_H / 2.f + 4.f)});
             window.draw(h);
         };
-        hint(PM_GY_CX, PM_GY_CY, !state_.graveyard.empty());
-        hint(PM_EXILE_CX, PM_EXILE_CY, !state_.exile.empty());
+        hint(gy_ctr_.x, gy_ctr_.y, !state_.graveyard.empty());
+        hint(exile_ctr_.x, exile_ctr_.y, !state_.exile.empty());
     }
     ctx_menu_.draw(window, fp);
     z_menu_.draw(window, fp);
+    cmd_ctx_menu_.draw(window, fp);
     gy_viewer_.draw(window, fp);
     exile_viewer_.draw(window, fp);
     window.display();

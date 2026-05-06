@@ -7,7 +7,9 @@
 int main(int argc, char* argv[])
 {
     if (argc < 2) {
-        std::cerr << "Usage: mtg-sim <deck.txt> [cache_dir]\n"
+        std::cerr << "Usage: mtg-sim [--commander|-c] <deck.txt> [cache_dir]\n"
+                  << "  --commander / -c  First card in deck list becomes the commander\n"
+                  << "                    and starts in the command zone.\n"
                   << "  Deck format (one entry per line):\n"
                   << "    4 Lightning Bolt\n"
                   << "    1x Black Lotus\n"
@@ -15,14 +17,29 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    if (argc >= 3) {
-        CardRequester::getInstance().setCacheDirectory(argv[2]);
-        std::cout << "Using cache directory: " << argv[2] << "\n";
+    bool commander_mode = false;
+    const char* deck_path  = nullptr;
+    const char* cache_path = nullptr;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--commander" || a == "-c") { commander_mode = true; }
+        else if (!deck_path)                  deck_path  = argv[i];
+        else if (!cache_path)                 cache_path = argv[i];
+    }
+    if (!deck_path) {
+        std::cerr << "Error: no deck file specified.\n";
+        return 1;
+    }
+
+    if (cache_path) {
+        CardRequester::getInstance().setCacheDirectory(cache_path);
+        std::cout << "Using cache directory: " << cache_path << "\n";
     }
 
     GameState state;
-    if (!state.loadDeck(argv[1])) {
-        std::cerr << "Error: could not load deck from \"" << argv[1] << "\"\n"
+    state.commander_mode = commander_mode;
+    if (!state.loadDeck(deck_path)) {
+        std::cerr << "Error: could not load deck from \"" << deck_path << "\"\n"
                   << "  Make sure the file exists and contains valid entries.\n";
         return 1;
     }

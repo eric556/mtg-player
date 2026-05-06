@@ -37,13 +37,20 @@ bool GameState::loadDeck(const std::string& path)
         CardArt art = CardRequester::getInstance().getArt(name);
         for (int j = 0; j < qty; ++j) {
             Card c;
-            c.name = name;
+            c.name         = name;
             c.art_texture  = art.front;
             c.back_texture = art.back;
-            deck.push_back(c);
+
+            // First card in the file becomes the commander when --commander is set.
+            if (commander_mode && deck.empty() && command_zone.empty() && j == 0) {
+                c.is_commander = true;
+                command_zone.push_back(c);
+            } else {
+                deck.push_back(c);
+            }
         }
     }
-    return !deck.empty();
+    return !deck.empty() || !command_zone.empty();
 }
 
 // ── Core deck operations ────────────────────────────────────────────────────
@@ -94,11 +101,12 @@ void GameState::playCard(int hand_idx, sf::Vector2f pos, sf::Vector2f start_pos)
 std::vector<Card>& GameState::zoneVec(Zone z)
 {
     switch (z) {
-        case Zone::DECK:        return deck;
-        case Zone::HAND:        return hand;
-        case Zone::BATTLEFIELD: return battlefield;
-        case Zone::GRAVEYARD:   return graveyard;
-        case Zone::EXILE:       return exile;
+        case Zone::DECK:         return deck;
+        case Zone::HAND:         return hand;
+        case Zone::BATTLEFIELD:  return battlefield;
+        case Zone::GRAVEYARD:    return graveyard;
+        case Zone::EXILE:        return exile;
+        case Zone::COMMAND_ZONE: return command_zone;
     }
     return deck; // unreachable
 }
@@ -110,7 +118,11 @@ void GameState::moveCard(Zone from, int idx, Zone to, DeckPos deck_pos)
 
     Card c = src[idx];
     src.erase(src.begin() + idx);
+
+    // Preserve commander tax counters when returning to the command zone.
+    int saved_counters = (to == Zone::COMMAND_ZONE) ? c.counters : 0;
     c.resetState();
+    c.counters = saved_counters;
 
     auto& dst = zoneVec(to);
     if (to == Zone::DECK && deck_pos == DeckPos::BOTTOM)
@@ -128,11 +140,9 @@ int GameState::rollDice(int sides)
 
 void GameState::resetAll()
 {
+    std::vector<Card> all;
     auto collect = [&](std::vector<Card>& zone) {
-        for (auto& c : zone) {
-            c.resetState();
-            deck.push_back(c);
-        }
+        for (auto& c : zone) { c.resetState(); all.push_back(c); }
         zone.clear();
     };
 
@@ -140,5 +150,13 @@ void GameState::resetAll()
     collect(battlefield);
     collect(graveyard);
     collect(exile);
+    collect(command_zone);
+
+    for (auto& c : all) {
+        if (commander_mode && c.is_commander)
+            command_zone.push_back(c);  // commander returns to command zone
+        else
+            deck.push_back(c);
+    }
     shuffleDeck();
 }

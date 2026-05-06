@@ -5,13 +5,14 @@
 constexpr float CARD_W = 100.f;
 constexpr float CARD_H = 140.f;
 
-enum class Zone    { DECK, HAND, BATTLEFIELD, GRAVEYARD, EXILE };
+enum class Zone    { DECK, HAND, BATTLEFIELD, GRAVEYARD, EXILE, COMMAND_ZONE };
 enum class DeckPos { TOP, BOTTOM };
 
 class Card {
 public:
     // ── Data ──────────────────────────────────────────────────────────────
     std::string  name;
+    bool         is_commander = false; // identity field — never cleared by resetState
     bool         tapped     = false;
     bool         face_down  = false;
     int          counters   = 0;
