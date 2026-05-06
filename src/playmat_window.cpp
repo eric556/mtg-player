@@ -174,10 +174,14 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
         if (cidx >= 0) { cmd_ctx_menu_.show(p, cidx, CMD_ITEMS); return; }
         int idx = cardAt(p);
         if (idx < 0) return;
-        if (shift)
+        if (shift) {
             z_menu_.show(p, idx, Z_ITEMS);
-        else
-            ctx_menu_.show(p, idx, CTX_ITEMS);
+        } else {
+            auto items = CTX_ITEMS;
+            if (state_.commander_mode && state_.battlefield[idx].is_commander)
+                items.push_back("Return to command zone");
+            ctx_menu_.show(p, idx, items);
+        }
         return;
     }
     if (btn == sf::Mouse::Button::Left) {
@@ -233,6 +237,10 @@ void PlaymatWindow::onMouseScroll(sf::Vector2f p, float delta) {
 void PlaymatWindow::applyContextAction(int item) {
     int idx = ctx_menu_.target_idx;
     if (idx < 0 || idx >= static_cast<int>(state_.battlefield.size())) return;
+    if (item == static_cast<int>(CTX_ITEMS.size())) {
+        state_.moveCard(Zone::BATTLEFIELD, idx, Zone::COMMAND_ZONE);
+        return;
+    }
     switch (item) {
         case CTX_FLIP:       state_.battlefield[idx].face_down = !state_.battlefield[idx].face_down; break;
         case CTX_TO_HAND:    state_.moveCard(Zone::BATTLEFIELD, idx, Zone::HAND);                    break;
