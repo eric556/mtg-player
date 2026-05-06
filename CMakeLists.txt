@@ -59,10 +59,11 @@ if(WIN32)
         src/vcam/win32_source/dllmain.cpp
         src/vcam/win32_source/media_source.cpp
         src/vcam/win32_source/media_stream.cpp
+        src/vcam/win32_source/vcam_source.def
     )
     target_compile_features(mtg-sim-vcam PRIVATE cxx_std_20)
-    target_include_directories(mtg-sim-vcam PRIVATE src)
-    target_link_libraries(mtg-sim-vcam PRIVATE mfplat mfuuid ole32 oleaut32)
+    target_include_directories(mtg-sim-vcam PRIVATE src/vcam/win32_source src/vcam src)
+    target_link_libraries(mtg-sim-vcam PRIVATE mfplat mfuuid ole32 oleaut32 shlwapi)
     # Place the DLL alongside the exe so the app can find it at runtime
     set_target_properties(mtg-sim-vcam PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})

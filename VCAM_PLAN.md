@@ -114,19 +114,24 @@ The Vcam implementations handle all platform-specific details.
 - [x] CMakeLists updated
 
 ### Phase 2 – Shared memory + Windows app side
-- [ ] `vcam_shared_mem.hpp`
-- [ ] `vcam_win32.cpp` (SHM writer + MFCreateVirtualCamera)
+- [x] `vcam_shared_mem.hpp`
+- [x] `vcam_win32.hpp/.cpp` (SHM writer + MFCreateVirtualCamera)
 
 ### Phase 3 – COM DLL
-- [ ] `win32_source/guids.hpp`
-- [ ] `win32_source/dllmain.cpp` (DllMain, ClassFactory, DllRegisterServer)
-- [ ] `win32_source/media_source.hpp/.cpp`
-- [ ] `win32_source/media_stream.hpp/.cpp`
+- [x] `win32_source/guids.hpp`
+- [x] `win32_source/vcam_source.def` (DLL exports)
+- [x] `win32_source/dllmain.cpp` (DllMain, ClassFactory, DllRegisterServer/Unregister)
+- [x] `win32_source/media_source.hpp/.cpp`
+- [x] `win32_source/media_stream.hpp/.cpp`
 
 ### Phase 4 – CMake DLL target + main.cpp --vcam-native
-- [ ] `CMakeLists.txt` DLL target
-- [ ] `main.cpp` new flag
-- [ ] `VCAM_PLAN.md` phase checkboxes updated
+- [x] `CMakeLists.txt` DLL target + link libraries
+- [x] `main.cpp` --vcam-native flag
+- [x] `VCAM_PLAN.md` phase checkboxes updated
+- [x] README updated
+
+## Status: Implementation complete — needs first build + test
+Known open questions (see bottom of this file).
 
 ---
 
