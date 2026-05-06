@@ -2,6 +2,10 @@
 #include "window_utils.hpp"
 #include "card.hpp"
 #include <array>
+#include <algorithm>
+#include <iostream>
+#include <cstring>
+#include <SFML/OpenGL.hpp>
 
 // Command zone sits in the top-left corner — left-anchored, so position is fixed.
 static constexpr float PM_CMD_CX = 65.f, PM_CMD_CY = 100.f;
@@ -148,6 +152,69 @@ PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
     window.setFramerateLimit(60);
     font_loaded_ = tryLoadFont(font_);
     reflow(window.getSize());
+}
+
+PlaymatWindow::~PlaymatWindow() { stopVcam(); }
+
+void PlaymatWindow::startVcam(const std::string& output, int fps) {
+    stopVcam();
+    vcam_size_     = window.getSize();
+    vcam_interval_ = 1.f / static_cast<float>(fps);
+    vcam_buf_.resize(static_cast<std::size_t>(vcam_size_.x) * vcam_size_.y * 4);
+
+    std::string cmd =
+        "ffmpeg -y -f rawvideo -pixel_format rgba"
+        " -video_size " + std::to_string(vcam_size_.x) + "x" + std::to_string(vcam_size_.y) +
+        " -framerate " + std::to_string(fps) +
+        " -i pipe:0 \"" + output + "\"";
+
+#ifdef _WIN32
+    vcam_pipe_ = _popen(cmd.c_str(), "wb");
+#else
+    vcam_pipe_ = popen(cmd.c_str(), "w");
+#endif
+
+    if (!vcam_pipe_) {
+        std::cerr << "vcam: failed to start ffmpeg. Is it installed and on PATH?\n"
+                  << "  Command: " << cmd << "\n";
+    } else {
+        std::cout << "vcam: streaming to \"" << output << "\" at "
+                  << fps << " fps (" << vcam_size_.x << "x" << vcam_size_.y << ")\n";
+        vcam_clock_.restart();
+    }
+}
+
+void PlaymatWindow::stopVcam() {
+    if (!vcam_pipe_) return;
+#ifdef _WIN32
+    _pclose(vcam_pipe_);
+#else
+    pclose(vcam_pipe_);
+#endif
+    vcam_pipe_ = nullptr;
+}
+
+void PlaymatWindow::vcamCaptureFrame() {
+    if (!vcam_pipe_) return;
+    if (vcam_clock_.getElapsedTime().asSeconds() < vcam_interval_) return;
+    vcam_clock_.restart();
+
+    auto sz = window.getSize();
+    if (sz != vcam_size_) return; // skip frames while window is being resized
+
+    // glReadPixels reads from the current back buffer (before display()).
+    // GL origin is bottom-left, so we flip rows after reading.
+    glReadPixels(0, 0, static_cast<GLsizei>(sz.x), static_cast<GLsizei>(sz.y),
+                 GL_RGBA, GL_UNSIGNED_BYTE, vcam_buf_.data());
+
+    const std::size_t row = sz.x * 4;
+    for (unsigned y = 0; y < sz.y / 2; ++y) {
+        std::uint8_t* top = vcam_buf_.data() + y * row;
+        std::uint8_t* bot = vcam_buf_.data() + (sz.y - 1 - y) * row;
+        std::swap_ranges(top, top + row, bot);
+    }
+
+    fwrite(vcam_buf_.data(), 1, vcam_buf_.size(), vcam_pipe_);
 }
 
 int PlaymatWindow::cardAt(sf::Vector2f p) const {
@@ -594,5 +661,6 @@ void PlaymatWindow::render() {
 
     drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
 
+    vcamCaptureFrame();
     window.display();
 }

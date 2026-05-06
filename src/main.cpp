@@ -3,12 +3,15 @@
 #include "playmat_window.hpp"
 #include "card_requester.hpp"
 #include <iostream>
+#include <cstdlib>
 
 int main(int argc, char* argv[])
 {
     bool        commander_mode = false;
     const char* deck_path      = nullptr;
     const char* cache_path     = nullptr;
+    const char* vcam_output    = nullptr;
+    int         vcam_fps       = 30;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -16,14 +19,22 @@ int main(int argc, char* argv[])
             commander_mode = true;
         } else if ((a == "--deck" || a == "-d") && i + 1 < argc) {
             deck_path = argv[++i];
-        } else if ((a == "--cache") && i + 1 < argc) {
+        } else if (a == "--cache" && i + 1 < argc) {
             cache_path = argv[++i];
+        } else if (a == "--vcam" && i + 1 < argc) {
+            vcam_output = argv[++i];
+        } else if (a == "--vcam-fps" && i + 1 < argc) {
+            vcam_fps = std::atoi(argv[++i]);
+            if (vcam_fps <= 0) vcam_fps = 30;
         } else {
             std::cerr << "Unknown argument: " << a << "\n"
                       << "Usage: mtg-sim --deck <deck.txt> [--cache <dir>] [--commander|-c]\n"
+                      << "               [--vcam <output>] [--vcam-fps <fps>]\n"
                       << "  --deck / -d       Path to deck list file (required)\n"
                       << "  --cache           Directory for caching card art\n"
                       << "  --commander / -c  First card becomes the commander\n"
+                      << "  --vcam            ffmpeg output path/URL for virtual camera\n"
+                      << "  --vcam-fps        Virtual camera framerate (default: 30)\n"
                       << "  Deck format (one entry per line):\n"
                       << "    4 Lightning Bolt\n"
                       << "    1x Black Lotus\n"
@@ -58,6 +69,8 @@ int main(int argc, char* argv[])
 
     state.hand_window_ptr = &hand_win.window;
     state.playmat_window_ptr = &playmat_win.window;
+
+    if (vcam_output) playmat_win.startVcam(vcam_output, vcam_fps);
 
     const sf::Time FRAME_TIME = sf::seconds(1.f / 120.f);
     sf::Clock frame_clock;
