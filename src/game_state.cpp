@@ -87,8 +87,8 @@ void GameState::playCard(int hand_idx, sf::Vector2f pos, sf::Vector2f start_pos)
 
     if (hand_window_ptr && playmat_window_ptr) {
         c.start_desktop_pos = hand_window_ptr->getPosition() + hand_window_ptr->mapCoordsToPixel(start_pos);
-        sf::Vector2f center = {1280.f / 2.f, 800.f / 2.f};
-        c.end_desktop_pos   = playmat_window_ptr->getPosition() + playmat_window_ptr->mapCoordsToPixel(center);
+        sf::Vector2u psz = playmat_window_ptr->getSize();
+        c.end_desktop_pos   = playmat_window_ptr->getPosition() + sf::Vector2i(psz.x / 2, psz.y / 2);
         c.is_flying_cross_window = true;
     } else {
         c.is_animating = true;
