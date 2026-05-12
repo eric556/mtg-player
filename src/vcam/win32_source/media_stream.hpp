@@ -60,6 +60,7 @@ private:
     void*  shm_view_     = nullptr;
 
     uint32_t last_frame_count_ = 0;
+    LONG     sample_count_     = 0;
     bool     active_           = false;
     bool     shutdown_         = false;
     CRITICAL_SECTION cs_;

@@ -10,8 +10,18 @@ DEFINE_CLSID_MtgVCamSource()   // one definition per binary (DLL side)
 #include "media_source.hpp"
 #include <shlwapi.h>
 #include <string>
+#include <cstdio>
 
 #pragma comment(lib, "shlwapi.lib")
+
+// Writes a line to C:\ProgramData\mtg-vcam-debug.log (writable by SYSTEM).
+static void VcamLog(const char* msg) {
+    FILE* f = nullptr;
+    fopen_s(&f, "C:\\ProgramData\\mtg-vcam-debug.log", "a");
+    if (f) { fputs(msg, f); fputc('\n', f); fclose(f); }
+    OutputDebugStringA(msg);
+    OutputDebugStringA("\n");
+}
 
 static HMODULE g_hModule = nullptr;
 
@@ -47,13 +57,26 @@ public:
     IFACEMETHODIMP_(ULONG) Release() override { return 1; }
 
     IFACEMETHODIMP CreateInstance(IUnknown* outer, REFIID riid, void** ppv) override {
+        wchar_t guidW[64] = {};
+        StringFromGUID2(riid, guidW, 64);
+        char guidA[64] = {};
+        WideCharToMultiByte(CP_ACP, 0, guidW, -1, guidA, 64, nullptr, nullptr);
+        char buf[128];
+        sprintf_s(buf, "CreateInstance riid=%s", guidA);
+        VcamLog(buf);
         if (outer) return CLASS_E_NOAGGREGATION;
         if (!ppv)  return E_POINTER;
-        MtgVCamSource* src = nullptr;
-        HRESULT hr = MtgVCamSource::Create(&src);
+
+        // Frame Server asks for IMFActivate; hand it an activate wrapper.
+        MtgVCamActivate* act = nullptr;
+        HRESULT hr = MtgVCamActivate::Create(&act);
+        sprintf_s(buf, "MtgVCamActivate::Create hr=0x%08X", (unsigned)hr);
+        VcamLog(buf);
         if (SUCCEEDED(hr)) {
-            hr = src->QueryInterface(riid, ppv);
-            src->Release();
+            hr = act->QueryInterface(riid, ppv);
+            sprintf_s(buf, "Activate QI hr=0x%08X", (unsigned)hr);
+            VcamLog(buf);
+            act->Release();
         }
         return hr;
     }
@@ -68,8 +91,16 @@ static MtgVCamClassFactory g_classFactory;
 // ---------------------------------------------------------------------------
 
 STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID* ppv) {
-    if (rclsid != CLSID_MtgVCamSource) return CLASS_E_CLASSNOTAVAILABLE;
-    return g_classFactory.QueryInterface(riid, ppv);
+    VcamLog("DllGetClassObject called");
+    if (rclsid != CLSID_MtgVCamSource) {
+        VcamLog("DllGetClassObject: wrong CLSID");
+        return CLASS_E_CLASSNOTAVAILABLE;
+    }
+    HRESULT hr = g_classFactory.QueryInterface(riid, ppv);
+    char buf[64];
+    sprintf_s(buf, "DllGetClassObject factory QI hr=0x%08X", (unsigned)hr);
+    VcamLog(buf);
+    return hr;
 }
 
 STDAPI DllCanUnloadNow() {

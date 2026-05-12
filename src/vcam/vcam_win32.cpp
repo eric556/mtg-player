@@ -13,13 +13,12 @@ DEFINE_CLSID_MtgVCamSource()   // one definition per binary (exe side)
 #include <mfvirtualcamera.h>
 #include <mfapi.h>
 #include <shlwapi.h>   // PathRemoveFileSpecW
-#include <shellapi.h>  // ShellExecuteExW
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <cstring>
 
 #pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "shell32.lib")
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,37 +35,6 @@ static std::wstring dllPath() {
     return exeDir() + L"\\mtg-sim-vcam.dll";
 }
 
-// Spawn regsvr32 elevated via UAC to write the InprocServer32 key into HKLM.
-// Blocks until regsvr32 exits (up to 15 s).
-static bool registerDllElevated(const std::wstring& dll) {
-    wchar_t sysDir[MAX_PATH] = {};
-    GetSystemDirectoryW(sysDir, MAX_PATH);
-    std::wstring regsvr32 = std::wstring(sysDir) + L"\\regsvr32.exe";
-    std::wstring params   = L"/s \"" + dll + L"\"";
-
-    SHELLEXECUTEINFOW sei = {};
-    sei.cbSize       = sizeof(sei);
-    sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
-    sei.lpVerb       = L"runas";
-    sei.lpFile       = regsvr32.c_str();
-    sei.lpParameters = params.c_str();
-    sei.nShow        = SW_HIDE;
-
-    if (!ShellExecuteExW(&sei)) {
-        DWORD err = GetLastError();
-        if (err == ERROR_CANCELLED)
-            std::cerr << "vcam-win32: UAC prompt was cancelled — re-run to register.\n";
-        else
-            std::cerr << "vcam-win32: ShellExecuteEx failed (" << err << ")\n";
-        return false;
-    }
-    if (sei.hProcess) {
-        WaitForSingleObject(sei.hProcess, 15000);
-        CloseHandle(sei.hProcess);
-    }
-    return true;
-}
-
 // ---------------------------------------------------------------------------
 // VcamWin32
 // ---------------------------------------------------------------------------
@@ -80,8 +48,14 @@ bool VcamWin32::start(unsigned width, unsigned height, int /*fps*/) {
     width_  = width;
     height_ = height;
 
+    // NULL DACL so the Frame Server service (SYSTEM, Session 0) can open these objects.
+    SECURITY_DESCRIPTOR sd = {};
+    InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+    SetSecurityDescriptorDacl(&sd, TRUE, nullptr, FALSE);
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), &sd, FALSE };
+
     // ── 1. Open (or create) the named mutex ──────────────────────────────
-    mutex_handle_ = CreateMutexW(nullptr, FALSE, VCAM_MUTEX_NAME);
+    mutex_handle_ = CreateMutexW(&sa, FALSE, VCAM_MUTEX_NAME);
     if (!mutex_handle_) {
         std::cerr << "vcam-win32: CreateMutex failed (" << GetLastError() << ")\n";
         return false;
@@ -89,7 +63,7 @@ bool VcamWin32::start(unsigned width, unsigned height, int /*fps*/) {
 
     // ── 2. Create the shared memory mapping ──────────────────────────────
     shm_handle_ = CreateFileMappingW(
-        INVALID_HANDLE_VALUE, nullptr,
+        INVALID_HANDLE_VALUE, &sa,
         PAGE_READWRITE,
         0, static_cast<DWORD>(VCAM_SHM_SIZE),
         VCAM_SHM_NAME);
@@ -136,9 +110,16 @@ void VcamWin32::pushFrame(const uint8_t* bgra, unsigned width, unsigned height) 
     auto* shm = static_cast<VcamSharedMem*>(shm_view_);
     shm->width  = width;
     shm->height = height;
-    const std::size_t bytes = static_cast<std::size_t>(width) * height * 4;
-    const std::size_t maxBytes = sizeof(shm->bgra);
-    std::memcpy(shm->bgra, bgra, bytes < maxBytes ? bytes : maxBytes);
+    const std::size_t nPixels = std::min(
+        static_cast<std::size_t>(width) * height,
+        static_cast<std::size_t>(VCAM_SHM_MAX_W) * VCAM_SHM_MAX_H);
+    // Force alpha to 0xFF — ARGB32 with A=0 renders as transparent
+    for (std::size_t i = 0; i < nPixels; ++i) {
+        shm->bgra[i * 4 + 0] = bgra[i * 4 + 0];
+        shm->bgra[i * 4 + 1] = bgra[i * 4 + 1];
+        shm->bgra[i * 4 + 2] = bgra[i * 4 + 2];
+        shm->bgra[i * 4 + 3] = 0xFF;
+    }
     shm->frame_count++;
 
     ReleaseMutex(mutex_handle_);
@@ -158,14 +139,23 @@ bool VcamWin32::ensureDllRegistered() {
     if (hk) RegCloseKey(hk);
     if (already) return true;
 
-    std::cout << "vcam-win32: registering COM source in HKLM (a UAC prompt will appear once)\n";
-    if (!registerDllElevated(dllPath())) return false;
-
-    hk = nullptr;
-    bool ok = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hk) == ERROR_SUCCESS);
-    if (hk) RegCloseKey(hk);
-    if (!ok) std::cerr << "vcam-win32: HKLM registration failed\n";
-    return ok;
+    // Process is elevated via requireAdministrator manifest, so we can call DllRegisterServer directly.
+    std::cout << "vcam-win32: registering COM source in HKLM (first run)\n";
+    std::wstring dll = dllPath();
+    HMODULE hMod = LoadLibraryW(dll.c_str());
+    if (!hMod) {
+        std::cerr << "vcam-win32: LoadLibraryW failed (" << GetLastError() << ")\n";
+        return false;
+    }
+    using DllRegFn = HRESULT(STDAPICALLTYPE*)();
+    auto fn = reinterpret_cast<DllRegFn>(GetProcAddress(hMod, "DllRegisterServer"));
+    HRESULT hr = fn ? fn() : E_NOTIMPL;
+    FreeLibrary(hMod);
+    if (FAILED(hr)) {
+        std::cerr << "vcam-win32: DllRegisterServer failed (0x" << std::hex << hr << ")\n";
+        return false;
+    }
+    return true;
 }
 
 bool VcamWin32::createVirtualCamera() {
@@ -216,7 +206,9 @@ void VcamWin32::destroyVirtualCamera() {
     if (!vcam_handle_) return;
     auto* vcam = static_cast<IMFVirtualCamera*>(vcam_handle_);
     vcam->Stop();
-    vcam->Remove();
+    // Do NOT call Remove() — MFVirtualCameraLifetime_Session cleans up automatically
+    // when the process exits. Explicit Remove() races with that cleanup and causes
+    // ERROR_SERVICE_REQUEST_TIMEOUT on the next launch.
     vcam->Release();
     vcam_handle_ = nullptr;
     MFShutdown();

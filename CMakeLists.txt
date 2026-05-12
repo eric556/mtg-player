@@ -69,6 +69,12 @@ if(WIN32)
     # Place the DLL alongside the exe so the app can find it at runtime
     set_target_properties(mtg-sim-vcam PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+
+    # Require administrator: MFVirtualCameraAccess_AllUsers::Start() needs elevation
+    if(MSVC)
+        target_link_options(mtg-sim PRIVATE
+            "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")
+    endif()
 endif()
 
 # Make mtg-sim the default startup project in Visual Studio.

@@ -4,8 +4,15 @@
 #include "../vcam_shared_mem.hpp"
 #include <mfapi.h>
 #include <mferror.h>
+#include <cstdio>
 #include <cstring>
 #include <algorithm>
+
+static void StrmLog(const char* msg) {
+    FILE* f = nullptr;
+    fopen_s(&f, "C:\\ProgramData\\mtg-vcam-debug.log", "a");
+    if (f) { fputs(msg, f); fputc('\n', f); fclose(f); }
+}
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -38,6 +45,11 @@ HRESULT MtgVCamStream::Init(MtgVCamSource* source, IMFStreamDescriptor* sd) {
         shm_view_ = MapViewOfFile(shm_handle_, FILE_MAP_READ, 0, 0, VCAM_SHM_SIZE);
     }
     mutex_handle_ = OpenMutexW(SYNCHRONIZE, FALSE, VCAM_MUTEX_NAME);
+
+    char b[128];
+    sprintf_s(b, "MtgVCamStream::Init shm_handle=%p shm_view=%p mutex=%p err=%lu",
+              shm_handle_, shm_view_, mutex_handle_, GetLastError());
+    StrmLog(b);
 
     return S_OK;
 }
@@ -125,6 +137,13 @@ IFACEMETHODIMP MtgVCamStream::RequestSample(IUnknown* token) {
     if (shutdown_) { LeaveCriticalSection(&cs_); return MF_E_SHUTDOWN; }
     if (!active_)  { LeaveCriticalSection(&cs_); return MF_E_INVALIDREQUEST; }
     LeaveCriticalSection(&cs_);
+
+    // Log first few sample requests to diagnose frame delivery
+    if (sample_count_++ < 3) {
+        char b[64];
+        sprintf_s(b, "RequestSample #%lu shm=%p mutex=%p", sample_count_, shm_view_, mutex_handle_);
+        StrmLog(b);
+    }
 
     // Try to get a frame from shared memory
     if (shm_view_ && mutex_handle_) {
