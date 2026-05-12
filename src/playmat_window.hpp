@@ -1,6 +1,7 @@
 #pragma once
 #include "game_state.hpp"
 #include "ui.hpp"
+#include "vcam_wrapper.hpp"
 #include <SFML/Graphics.hpp>
 
 // -- Playmat window (the public, stream-shared window) ----------------------
@@ -18,6 +19,14 @@ private:
     GameState& state_;
     sf::Font   font_;
     bool       font_loaded_ = false;
+
+    // Virtual Camera
+    VCamWrapper      vcam_;
+    sf::Texture      vcam_tex_;
+    sf::RenderTexture vcam_scaler_;
+    sf::Clock        vcam_timer_;
+    bool             vcam_enabled_ = true;
+
     ContextMenu ctx_menu_;     // right-click on battlefield: zone actions
     ContextMenu z_menu_;       // shift+right-click on battlefield: z-depth
     ContextMenu cmd_ctx_menu_; // right-click on command zone card

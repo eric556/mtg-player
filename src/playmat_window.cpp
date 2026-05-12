@@ -105,6 +105,8 @@ static bool tryLoadFont(sf::Font& font)
 }
 
 void PlaymatWindow::reflow(sf::Vector2u size) {
+    if (size.x == 0 || size.y == 0) return;
+
     float new_w = static_cast<float>(size.x) / ui_scale_;
     float new_h = static_cast<float>(size.y) / ui_scale_;
 
@@ -136,6 +138,17 @@ void PlaymatWindow::reflow(sf::Vector2u size) {
     exile_viewer_.overlay = pv_overlay;
 
     updateView(window, ui_scale_);
+
+    if (vcam_enabled_) {
+        vcam_tex_.resize(size);
+        // Only restart VCam if it's not already running or the size is significantly different.
+        // We avoid restarting on every single pixel during an active drag.
+        static sf::Clock resize_cooldown;
+        if (!vcam_.isRunning() || resize_cooldown.getElapsedTime().asSeconds() > 0.2f) {
+            vcam_.start(size.x, size.y);
+            resize_cooldown.restart();
+        }
+    }
 }
 
 PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
@@ -513,6 +526,12 @@ void PlaymatWindow::render() {
     exile_viewer_.draw(window, fp);
 
     drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
+
+    if (vcam_enabled_ && vcam_timer_.getElapsedTime().asSeconds() >= (1.f/60.f)) {
+        vcam_timer_.restart();
+        vcam_tex_.update(window);
+        vcam_.pushFrame(vcam_tex_.copyToImage());
+    }
 
     window.display();
 }
