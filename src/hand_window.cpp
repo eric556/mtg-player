@@ -146,16 +146,16 @@ void HandWindow::onMousePress(sf::Vector2f p) {
             float off = static_cast<float>(state_.battlefield.size()) * 115.f;
             float px  = 220.f + std::fmod(off, 820.f);
             float py  = 420.f + (static_cast<int>(off / 820.f) % 2 == 0 ? 0.f : 100.f);
-            // Record a MoveCardAction for undo; playCard also sets up animation.
+            // Capture the card's screen position BEFORE the move shifts the hand layout.
+            sf::Vector2f card_center = handCardCenter(selected_hand_idx_);
             auto act = std::make_unique<MoveCardAction>(Zone::HAND, selected_hand_idx_, Zone::BATTLEFIELD);
             state_.history.push(std::move(act), state_);
-            // Re-apply animation/position setup that playCard normally handles.
             if (Card* c = state_.lastInZone(Zone::BATTLEFIELD)) {
                 c->target_position = {px, py};
-                c->position        = handCardCenter(selected_hand_idx_);
+                c->position        = card_center;
                 if (state_.hand_window_ptr && state_.playmat_window_ptr) {
                     c->start_desktop_pos      = state_.hand_window_ptr->getPosition()
-                        + state_.hand_window_ptr->mapCoordsToPixel(handCardCenter(selected_hand_idx_));
+                        + state_.hand_window_ptr->mapCoordsToPixel(card_center);
                     sf::Vector2u psz = state_.playmat_window_ptr->getSize();
                     c->end_desktop_pos        = state_.playmat_window_ptr->getPosition()
                         + sf::Vector2i(psz.x / 2, psz.y / 2);
