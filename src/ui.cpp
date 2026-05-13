@@ -151,6 +151,15 @@ PileAction PileViewer::handleClick(sf::Vector2f p)
     return {};
 }
 
+int PileViewer::handleRightClick(sf::Vector2f p)
+{
+    if (!visible || !overlay.contains(p)) return -1;
+    float list_top = overlay.position.y + 40.f;
+    float rel = p.y - list_top + scroll_offset;
+    int idx = static_cast<int>(rel / 18.f);
+    return (idx >= 0 && idx < (int)entries.size()) ? idx : -1;
+}
+
 void PileViewer::handleScroll(float delta)
 {
     if (!visible) return;

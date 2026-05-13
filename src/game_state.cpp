@@ -142,8 +142,8 @@ void GameState::moveCard(Zone from, int idx, Zone to, DeckPos deck_pos)
     Card c = src[idx];
     src.erase(src.begin() + idx);
 
-    // Preserve commander tax counters when returning to the command zone.
-    int saved_counters = (to == Zone::COMMAND_ZONE) ? c.counters : 0;
+    // Commander tax persists across all zone transitions for commander cards.
+    int saved_counters = c.is_commander ? c.counters : 0;
     c.resetState();
     c.counters = saved_counters;
 
