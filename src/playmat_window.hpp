@@ -46,13 +46,16 @@ private:
     sf::Clock         vcam_timer_;
     bool              vcam_enabled_ = true;
 
-    ContextMenu ctx_menu_;     // right-click on battlefield: zone actions
-    ContextMenu z_menu_;       // shift+right-click on battlefield: z-depth
-    ContextMenu cmd_ctx_menu_; // right-click on command zone card
+    ContextMenu ctx_menu_;        // right-click on battlefield card: zone actions
+    ContextMenu z_menu_;          // shift+right-click on battlefield: z-depth
+    ContextMenu cmd_ctx_menu_;    // right-click on command zone card (inline)
+    ContextMenu gy_bulk_menu_;    // right-click inside GY viewer: bulk actions
+    ContextMenu cmd_viewer_ctx_;  // right-click on card in commander viewer
 
-    // Graveyard and exile viewers visible on the shared window.
+    // Pile viewers.
     PileViewer gy_viewer_;
     PileViewer exile_viewer_;
+    PileViewer cmd_viewer_;       // opened by left-clicking the command zone area
     sf::FloatRect gy_rect_;
     sf::FloatRect exile_rect_;
 
@@ -88,5 +91,7 @@ private:
     void applyContextAction(int item);
     void applyZAction(int item);
     void applyCmdContextAction(int item);
+    void applyGYBulkAction(int item);
+    void applyCmdViewerCtxAction(int item);
     int  cmdCardAt(sf::Vector2f p) const;
 };

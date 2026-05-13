@@ -61,6 +61,7 @@ struct PileViewer {
     void       show(const std::string& t, const std::vector<Card>& pile, Zone z);
     void       hide();
     PileAction handleClick(sf::Vector2f p);
+    int        handleRightClick(sf::Vector2f p);  // returns hovered card idx, -1 if none; does NOT close
     void       handleScroll(float delta);
     void       handleMouseMove(sf::Vector2f p);
     void       draw(sf::RenderTarget& target, const sf::Font* font) const;

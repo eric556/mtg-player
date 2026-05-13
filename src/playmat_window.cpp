@@ -51,6 +51,25 @@ static const std::vector<std::string> Z_ITEMS = {
     "Move down one",
 };
 
+// Right-click inside GY viewer: bulk zone actions
+enum GYBulkItem {
+    GY_BULK_TO_BF = 0, GY_BULK_TO_DECK, GY_BULK_TO_EXILE,
+};
+static const std::vector<std::string> GY_BULK_ITEMS = {
+    "All to battlefield",
+    "All to deck (top)",
+    "All to exile",
+};
+
+// Right-click on a card inside the commander viewer
+enum CmdViewerCtxItem {
+    CMD_VC_PLAY = 0, CMD_VC_ADD_TAX,
+};
+static const std::vector<std::string> CMD_VIEWER_CTX_ITEMS = {
+    "Play commander",
+    "Add commander tax",
+};
+
 // -- Pile stack helper ------------------------------------------------------
 
 static void drawPileStack(sf::RenderTarget& win, const sf::Font* font,
@@ -136,6 +155,7 @@ void PlaymatWindow::reflow(sf::Vector2u size) {
     sf::FloatRect pv_overlay = {{pv_x, pv_y}, {pv_w, pv_h}};
     gy_viewer_.overlay    = pv_overlay;
     exile_viewer_.overlay = pv_overlay;
+    cmd_viewer_.overlay   = pv_overlay;
 
     state_.pos_zone_bf    = {w_ / 2.f, h_ / 2.f};
     state_.pos_zone_gy    = gy_ctr_;
@@ -167,7 +187,7 @@ int PlaymatWindow::cardAt(sf::Vector2f p) const {
 }
 
 void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift) {
-    // -- PileViewer actions ---------------------------------------------
+    // -- PileViewer zone-move actions (left-click on hover buttons) -----
     auto handlePileViewerAction = [&](PileViewer& viewer, sf::Vector2f pile_center) {
         auto act = viewer.handleClick(p);
         if (!act.valid) return;
@@ -187,8 +207,57 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
         }
     };
 
-    if (gy_viewer_.visible)    { handlePileViewerAction(gy_viewer_,    gy_ctr_);    return; }
-    if (exile_viewer_.visible) { handlePileViewerAction(exile_viewer_, exile_ctr_); return; }
+    // -- Floating context menus (viewer right-click menus) take priority -
+    if (gy_bulk_menu_.visible) {
+        if (btn == sf::Mouse::Button::Left) {
+            int item = gy_bulk_menu_.hitTest(p);
+            if (item >= 0) applyGYBulkAction(item);
+            gy_bulk_menu_.hide();
+        }
+        return;
+    }
+    if (cmd_viewer_ctx_.visible) {
+        if (btn == sf::Mouse::Button::Left) {
+            int item = cmd_viewer_ctx_.hitTest(p);
+            if (item >= 0) applyCmdViewerCtxAction(item);
+            cmd_viewer_ctx_.hide();
+        }
+        return;
+    }
+
+    // -- GY viewer ----------------------------------------------------------
+    if (gy_viewer_.visible) {
+        if (btn == sf::Mouse::Button::Right) {
+            gy_bulk_menu_.show(p, -1, GY_BULK_ITEMS, {w_, h_});
+        } else {
+            handlePileViewerAction(gy_viewer_, gy_ctr_);
+        }
+        return;
+    }
+
+    // -- Exile viewer -------------------------------------------------------
+    if (exile_viewer_.visible) {
+        if (btn != sf::Mouse::Button::Right)
+            handlePileViewerAction(exile_viewer_, exile_ctr_);
+        else
+            exile_viewer_.hide();
+        return;
+    }
+
+    // -- Commander viewer ---------------------------------------------------
+    if (cmd_viewer_.visible) {
+        if (btn == sf::Mouse::Button::Right) {
+            int cidx = cmd_viewer_.handleRightClick(p);
+            if (cidx >= 0)
+                cmd_viewer_ctx_.show(p, cidx, CMD_VIEWER_CTX_ITEMS, {w_, h_});
+            else
+                cmd_viewer_.hide();
+        } else {
+            handlePileViewerAction(cmd_viewer_, {PM_CMD_CX, PM_CMD_CY});
+        }
+        return;
+    }
+
     if (btn == sf::Mouse::Button::Right) {
         ctx_menu_.hide(); z_menu_.hide(); cmd_ctx_menu_.hide();
         // Check command zone first (top-left, doesn't overlap battlefield).
@@ -224,6 +293,10 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
         }
         if (gy_rect_.contains(p) && !state_.graveyard.empty()) { gy_viewer_.show("Graveyard", state_.graveyard, Zone::GRAVEYARD); return; }
         if (exile_rect_.contains(p) && !state_.exile.empty()) { exile_viewer_.show("Exile", state_.exile, Zone::EXILE); return; }
+        if (state_.commander_mode && !state_.command_zone.empty() && cmdCardAt(p) >= 0) {
+            cmd_viewer_.show("Command Zone", state_.command_zone, Zone::COMMAND_ZONE);
+            return;
+        }
         int idx = cardAt(p);
         if (idx >= 0) {
             if (idx == last_click_idx_ && dbl_click_clock_.getElapsedTime().asSeconds() < 0.4f) {
@@ -360,6 +433,47 @@ void PlaymatWindow::applyCmdContextAction(int item) {
                               if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::BOTTOM)) fly(*c, Zone::DECK); break;
         case CMD_ADD_CTR:     state_.command_zone[idx].counters++;                                     break;
         case CMD_REM_CTR:     state_.command_zone[idx].counters--;                                     break;
+    }
+}
+
+void PlaymatWindow::applyGYBulkAction(int item) {
+    Zone to = Zone::HAND;
+    DeckPos dp = DeckPos::TOP;
+    switch (item) {
+        case GY_BULK_TO_BF:   to = Zone::BATTLEFIELD; break;
+        case GY_BULK_TO_DECK: to = Zone::DECK;        break;
+        case GY_BULK_TO_EXILE:to = Zone::EXILE;       break;
+        default: return;
+    }
+    while (!state_.graveyard.empty())
+        state_.moveCard(Zone::GRAVEYARD, (int)state_.graveyard.size() - 1, to, dp);
+    gy_viewer_.hide();
+}
+
+void PlaymatWindow::applyCmdViewerCtxAction(int item) {
+    int viewer_idx = cmd_viewer_ctx_.target_idx;
+    if (viewer_idx < 0 || viewer_idx >= (int)cmd_viewer_.entries.size()) return;
+    int original_idx = cmd_viewer_.entries[viewer_idx].original_idx;
+    if (original_idx < 0 || original_idx >= (int)state_.command_zone.size()) return;
+
+    if (item == CMD_VC_PLAY) {
+        sf::Vector2f cmd_pos = {PM_CMD_CX + original_idx * (CARD_W + 10.f), PM_CMD_CY};
+        sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(cmd_pos));
+        state_.moveCard(Zone::COMMAND_ZONE, original_idx, Zone::BATTLEFIELD);
+        if (auto* c = state_.lastInZone(Zone::BATTLEFIELD)) {
+            c->target_position        = {w_ / 2.f, h_ / 2.f};
+            c->position               = cmd_pos;
+            c->is_flying_cross_window = true;
+            c->start_desktop_pos      = src;
+            c->end_desktop_pos        = state_.zoneDesktopCenter(Zone::BATTLEFIELD);
+            c->anim_timer             = 0.f;
+            c->is_animating           = false;
+        }
+        cmd_viewer_.hide();
+    } else if (item == CMD_VC_ADD_TAX) {
+        state_.command_zone[original_idx].counters++;
+        // Re-open viewer so the updated counter is reflected.
+        cmd_viewer_.show("Command Zone", state_.command_zone, Zone::COMMAND_ZONE);
     }
 }
 
@@ -603,6 +717,7 @@ void PlaymatWindow::buildDrawList() {
         };
         drawScaledViewer(gy_viewer_);
         drawScaledViewer(exile_viewer_);
+        drawScaledViewer(cmd_viewer_);
     }, true});
 
     frame_cmds_.push_back({[&](const DrawCtx& dc) {
@@ -636,6 +751,8 @@ void PlaymatWindow::buildDrawList() {
         ctx_menu_.draw(dc.target, dc.font);
         z_menu_.draw(dc.target, dc.font);
         cmd_ctx_menu_.draw(dc.target, dc.font);
+        gy_bulk_menu_.draw(dc.target, dc.font);
+        cmd_viewer_ctx_.draw(dc.target, dc.font);
     }, false});
 
     frame_cmds_.push_back({[&](const DrawCtx& dc) {
