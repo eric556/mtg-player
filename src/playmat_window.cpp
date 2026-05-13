@@ -287,6 +287,10 @@ void PlaymatWindow::handleEvent(const sf::Event& e) {
             } else if (kp->code == sf::Keyboard::Key::Num0 || kp->code == sf::Keyboard::Key::Numpad0) {
                 ui_scale_ = 1.0f;
                 reflow(window.getSize());
+            } else if (kp->code == sf::Keyboard::Key::Z) {
+                state_.history.undo(state_);
+            } else if (kp->code == sf::Keyboard::Key::Y) {
+                state_.history.redo(state_);
             }
         }
     } else if (const auto* rs = e.getIf<sf::Event::Resized>()) {
