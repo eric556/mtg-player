@@ -30,14 +30,14 @@ enum CmdCtxItem {
     CMD_ADD_CTR, CMD_REM_CTR,
 };
 static const std::vector<std::string> CMD_ITEMS = {
-    "Move to battlefield",
+    "Play commander",
     "Return to hand",
     "Send to graveyard",
     "Send to exile",
     "To top of deck",
     "To bottom of deck",
-    "Add counter (tax)",
-    "Remove counter (tax)",
+    "Add commander tax",
+    "Remove commander tax",
 };
 
 // Shift+right-click menu (z-depth ordering only)
@@ -260,6 +260,11 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
 
     if (btn == sf::Mouse::Button::Right) {
         ctx_menu_.hide(); z_menu_.hide(); cmd_ctx_menu_.hide();
+        // Right-click pile stacks directly — no need to open the viewer first.
+        if (gy_rect_.contains(p) && !state_.graveyard.empty()) {
+            gy_bulk_menu_.show(p, -1, GY_BULK_ITEMS, {w_, h_});
+            return;
+        }
         // Check command zone first (top-left, doesn't overlap battlefield).
         int cidx = cmdCardAt(p);
         if (cidx >= 0) { cmd_ctx_menu_.show(p, cidx, CMD_ITEMS, {w_, h_}); return; }
@@ -392,8 +397,11 @@ void PlaymatWindow::applyZAction(int item) {
 }
 
 int PlaymatWindow::cmdCardAt(sf::Vector2f p) const {
-    for (int i = (int)state_.command_zone.size() - 1; i >= 0; --i)
-        if (state_.command_zone[i].contains(p)) return i;
+    for (int i = (int)state_.command_zone.size() - 1; i >= 0; --i) {
+        float cx = PM_CMD_CX + i * (CARD_W + 10.f);
+        sf::FloatRect bounds({cx - CARD_W / 2.f, PM_CMD_CY - CARD_H / 2.f}, {CARD_W, CARD_H});
+        if (bounds.contains(p)) return i;
+    }
     return -1;
 }
 
