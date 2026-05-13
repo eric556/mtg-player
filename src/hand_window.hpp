@@ -1,6 +1,7 @@
 #pragma once
 #include "game_state.hpp"
 #include "ui.hpp"
+#include "pile_viewer.hpp"
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <vector>
@@ -26,6 +27,11 @@ private:
 
     // UI Buttons
     Button btn_draw_, btn_shuffle_, btn_reset_, btn_search_, btn_play_, btn_view_top_;
+    Button btn_create_token_;
+
+    // Token creation dialog
+    bool        token_dialog_open_  = false;
+    std::string token_input_;       // text typed so far
 
     // Live window dimensions (updated by reflow on every resize).
     float w_ = 900.f, h_ = 720.f;
@@ -44,4 +50,5 @@ private:
     void         drawPileStack(sf::RenderTarget& target, sf::Vector2f center, int count,
                                const std::string& label, sf::Color back_col);
     void         drawAltPreview(sf::RenderTarget& target, const sf::Font* font, sf::Vector2f mouse_pos) const;
+    void         drawTokenDialog(sf::RenderTarget& target) const;
 };

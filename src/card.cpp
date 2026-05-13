@@ -38,6 +38,8 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
             { body.setOutlineColor(sf::Color::Yellow);          body.setOutlineThickness(3.f);  }
         else if (card.is_commander)
             { body.setOutlineColor(sf::Color(218, 165, 32));    body.setOutlineThickness(2.5f); }
+        else if (card.is_token)
+            { body.setOutlineColor(sf::Color(80, 200, 120));    body.setOutlineThickness(2.f);  }
         else
             { body.setOutlineColor(sf::Color(50, 30, 10));      body.setOutlineThickness(1.5f); }
         if (card.art_texture) {
@@ -80,6 +82,29 @@ static void drawCardImpl(sf::RenderTarget& target, const Card& card,
                          std::round(lb.position.y)});
             t.setPosition({0.f, std::round(start_y + i * LINE_H)});
             target.draw(t, states);
+        }
+    }
+
+    // ── Token badge (top-left corner) — small green "T" marker ───────────
+    if (card.is_token && !card.face_down) {
+        constexpr float TR = 9.f;
+        sf::CircleShape tbadge(TR);
+        tbadge.setOrigin({TR, TR});
+        tbadge.setPosition({-CARD_W / 2.f + TR + 2.f, -CARD_H / 2.f + TR + 2.f});
+        tbadge.setFillColor(sf::Color(40, 160, 80));
+        tbadge.setOutlineColor(sf::Color::White);
+        tbadge.setOutlineThickness(1.f);
+        target.draw(tbadge, states);
+
+        if (font) {
+            sf::Text tlbl(*font, "T", 10);
+            tlbl.setFillColor(sf::Color::White);
+            sf::FloatRect tlb = tlbl.getLocalBounds();
+            tlbl.setOrigin({std::round(tlb.position.x + tlb.size.x / 2.f),
+                            std::round(tlb.position.y + tlb.size.y / 2.f)});
+            tlbl.setPosition({std::round(-CARD_W / 2.f + TR + 2.f),
+                              std::round(-CARD_H / 2.f + TR + 2.f)});
+            target.draw(tlbl, states);
         }
     }
 

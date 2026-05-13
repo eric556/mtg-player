@@ -1,5 +1,6 @@
 #pragma once
 #include "card.hpp"
+#include "game_action.hpp"
 #include <vector>
 #include <string>
 #include <random>
@@ -48,7 +49,15 @@ struct GameState {
 
     void moveCard(Zone from, int idx, Zone to, DeckPos deck_pos = DeckPos::TOP);
 
+    // Creates a token with the given name directly on the battlefield.
+    // Tokens are removed from the game entirely when sent to GY or exile
+    // (they never actually reside in those zones).
+    void createToken(const std::string& name);
+
     int rollDice(int sides);
+
+    // Undo / redo history.
+    ActionHistory history;
 
 private:
     std::vector<Card>& zoneVec(Zone z);
