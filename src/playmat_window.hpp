@@ -1,6 +1,7 @@
 #pragma once
 #include "game_state.hpp"
 #include "ui.hpp"
+#include "pile_viewer.hpp"
 #include "vcam_wrapper.hpp"
 #include <SFML/Graphics.hpp>
 #include <functional>

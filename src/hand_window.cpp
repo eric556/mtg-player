@@ -1,6 +1,7 @@
 #include "hand_window.hpp"
 #include "window_utils.hpp"
 #include "card.hpp"
+#include "game_action.hpp"
 #include <algorithm>
 #include <cstdio>
 
@@ -24,12 +25,13 @@ HandWindow::HandWindow(GameState& gs) : state_(gs) {
     window.setFramerateLimit(60);
     font_loaded_ = tryLoadFont(font_);
 
-    btn_draw_.label    = "Draw";
-    btn_shuffle_.label = "Shuffle";
-    btn_reset_.label   = "Reset Deck";
-    btn_search_.label  = "Search Deck";
-    btn_view_top_.label = "View Top";
-    btn_play_.label    = "Play Card";
+    btn_draw_.label         = "Draw";
+    btn_shuffle_.label      = "Shuffle";
+    btn_reset_.label        = "Reset Deck";
+    btn_search_.label       = "Search Deck";
+    btn_view_top_.label     = "View Top";
+    btn_play_.label         = "Play Card";
+    btn_create_token_.label = "Create Token";
 
     reflow(window.getSize());
     }
@@ -38,14 +40,15 @@ HandWindow::HandWindow(GameState& gs) : state_(gs) {
     w_ = static_cast<float>(size.x) / ui_scale_;
     h_ = static_cast<float>(size.y) / ui_scale_;
 
-    // Buttons - left-anchored except Play which is right-anchored
+    // Buttons - left-anchored except Create Token + Play which are right-anchored
     constexpr float bx = 20.f, by = 10.f, bh = 35.f;
-    btn_draw_.bounds     = {{bx,         by}, {80.f,  bh}};
-    btn_shuffle_.bounds  = {{bx + 90.f,  by}, {80.f,  bh}};
-    btn_reset_.bounds    = {{bx + 180.f, by}, {100.f, bh}};
-    btn_search_.bounds   = {{bx + 290.f, by}, {100.f, bh}};
-    btn_view_top_.bounds = {{bx + 400.f, by}, {85.f,  bh}};
-    btn_play_.bounds     = {{w_ - 140.f, by}, {120.f, bh}};
+    btn_draw_.bounds          = {{bx,         by}, {80.f,  bh}};
+    btn_shuffle_.bounds       = {{bx + 90.f,  by}, {80.f,  bh}};
+    btn_reset_.bounds         = {{bx + 180.f, by}, {100.f, bh}};
+    btn_search_.bounds        = {{bx + 290.f, by}, {100.f, bh}};
+    btn_view_top_.bounds      = {{bx + 400.f, by}, {85.f,  bh}};
+    btn_create_token_.bounds  = {{w_ - 275.f, by}, {120.f, bh}};
+    btn_play_.bounds          = {{w_ - 140.f, by}, {120.f, bh}};
 
     // Pile centers - deck left-anchored, others right-anchored
     pos_deck_  = {65.f,       160.f};
@@ -86,13 +89,25 @@ int HandWindow::handCardAt(sf::Vector2f p) const {
 }
 
 void HandWindow::onMousePress(sf::Vector2f p) {
+    // -- Token dialog intercepts ALL clicks when open ----------------------
+    if (token_dialog_open_) {
+        // A click outside the dialog box cancels it.
+        constexpr float dw = 360.f, dh = 110.f;
+        sf::FloatRect dlg({(w_ - dw) / 2.f, (h_ - dh) / 2.f}, {dw, dh});
+        if (!dlg.contains(p)) {
+            token_dialog_open_ = false;
+            token_input_.clear();
+        }
+        return;
+    }
+
     // -- PileViewer actions -----------------------------------------------
     if (pile_viewer_.visible) {
         auto act = pile_viewer_.handleClick(p);
         if (act.valid) {
             sf::Vector2i src = window.getPosition() + sf::Vector2i(window.mapCoordsToPixel(pos_deck_));
             sf::Vector2i dst = state_.zoneDesktopCenter(act.to);
-            state_.moveCard(act.from, act.index, act.to, act.deck_pos);
+            state_.history.push(std::make_unique<MoveCardAction>(act.from, act.index, act.to, act.deck_pos), state_);
             if (Card* c = state_.lastInZone(act.to, act.deck_pos)) {
                 if (act.to == Zone::BATTLEFIELD) {
                     c->target_position       = {640.f, 400.f};
@@ -116,17 +131,41 @@ void HandWindow::onMousePress(sf::Vector2f p) {
         return;
     }
 
-    if (btn_draw_.contains(p))    { state_.drawCard(); return; }
+    if (btn_draw_.contains(p))    { state_.history.push(std::make_unique<DrawCardAction>(), state_); return; }
     if (btn_shuffle_.contains(p)) { state_.shuffleDeck(); return; }
     if (btn_reset_.contains(p))   { state_.resetAll(); return; }
     if (btn_search_.contains(p))  { pile_viewer_.show("DECK", state_.deck, Zone::DECK); return; }
     if (btn_view_top_.contains(p)) { state_.deck_top_visible = !state_.deck_top_visible; return; }
+    if (btn_create_token_.contains(p)) {
+        token_dialog_open_ = true;
+        token_input_.clear();
+        return;
+    }
     if (btn_play_.contains(p)) {
         if (selected_hand_idx_ >= 0) {
             float off = static_cast<float>(state_.battlefield.size()) * 115.f;
             float px  = 220.f + std::fmod(off, 820.f);
             float py  = 420.f + (static_cast<int>(off / 820.f) % 2 == 0 ? 0.f : 100.f);
-            state_.playCard(selected_hand_idx_, {px, py}, handCardCenter(selected_hand_idx_));
+            // Record a MoveCardAction for undo; playCard also sets up animation.
+            auto act = std::make_unique<MoveCardAction>(Zone::HAND, selected_hand_idx_, Zone::BATTLEFIELD);
+            state_.history.push(std::move(act), state_);
+            // Re-apply animation/position setup that playCard normally handles.
+            if (Card* c = state_.lastInZone(Zone::BATTLEFIELD)) {
+                c->target_position = {px, py};
+                c->position        = handCardCenter(selected_hand_idx_);
+                if (state_.hand_window_ptr && state_.playmat_window_ptr) {
+                    c->start_desktop_pos      = state_.hand_window_ptr->getPosition()
+                        + state_.hand_window_ptr->mapCoordsToPixel(handCardCenter(selected_hand_idx_));
+                    sf::Vector2u psz = state_.playmat_window_ptr->getSize();
+                    c->end_desktop_pos        = state_.playmat_window_ptr->getPosition()
+                        + sf::Vector2i(psz.x / 2, psz.y / 2);
+                    c->is_flying_cross_window = true;
+                    c->is_animating           = false;
+                } else {
+                    c->is_animating = true;
+                }
+                c->anim_timer = 0.f;
+            }
             selected_hand_idx_ = -1;
         }
         return;
@@ -137,7 +176,7 @@ void HandWindow::onMousePress(sf::Vector2f p) {
         return sf::FloatRect({center.x - CARD_W/2.f, center.y - CARD_H/2.f}, {CARD_W, CARD_H}).contains(p);
     };
 
-    if (hitPile(pos_deck_))  { state_.drawCard(); return; }
+    if (hitPile(pos_deck_))  { state_.history.push(std::make_unique<DrawCardAction>(), state_); return; }
     if (hitPile(pos_gy_))    { pile_viewer_.show("GRAVEYARD",    state_.graveyard,    Zone::GRAVEYARD);    return; }
     if (hitPile(pos_exile_)) { pile_viewer_.show("EXILE",        state_.exile,        Zone::EXILE);        return; }
     if (state_.commander_mode && hitPile(pos_cmd_))
@@ -158,6 +197,7 @@ void HandWindow::onMousePress(sf::Vector2f p) {
 
 void HandWindow::onMouseRightClick(sf::Vector2f p) {
     if (pile_viewer_.visible) return;
+    if (token_dialog_open_) { token_dialog_open_ = false; token_input_.clear(); return; }
     int idx = handCardAt(p);
     if (idx >= 0) {
         ctx_menu_.show(p, idx, {
@@ -183,25 +223,26 @@ void HandWindow::applyHandContextAction(int item) {
     };
 
     switch (item) {
-        case 0: state_.moveCard(Zone::HAND, idx, Zone::GRAVEYARD);
+        case 0: state_.history.push(std::make_unique<MoveCardAction>(Zone::HAND, idx, Zone::GRAVEYARD), state_);
                 if (auto* c = state_.lastInZone(Zone::GRAVEYARD)) fly(*c, Zone::GRAVEYARD); break;
-        case 1: state_.moveCard(Zone::HAND, idx, Zone::EXILE);
+        case 1: state_.history.push(std::make_unique<MoveCardAction>(Zone::HAND, idx, Zone::EXILE), state_);
                 if (auto* c = state_.lastInZone(Zone::EXILE))     fly(*c, Zone::EXILE);     break;
-        case 2: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::TOP);
+        case 2: state_.history.push(std::make_unique<MoveCardAction>(Zone::HAND, idx, Zone::DECK, DeckPos::TOP), state_);
                 if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::TOP))    fly(*c, Zone::DECK); break;
-        case 3: state_.moveCard(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM);
+        case 3: state_.history.push(std::make_unique<MoveCardAction>(Zone::HAND, idx, Zone::DECK, DeckPos::BOTTOM), state_);
                 if (auto* c = state_.lastInZone(Zone::DECK, DeckPos::BOTTOM)) fly(*c, Zone::DECK); break;
     }
     selected_hand_idx_ = -1;
 }
 
 void HandWindow::onMouseMove(sf::Vector2f p) {
-    btn_draw_.hovered    = btn_draw_.contains(p);
-    btn_shuffle_.hovered = btn_shuffle_.contains(p);
-    btn_reset_.hovered   = btn_reset_.contains(p);
-    btn_search_.hovered  = btn_search_.contains(p);
-    btn_view_top_.hovered = btn_view_top_.contains(p);
-    btn_play_.hovered    = btn_play_.contains(p);
+    btn_draw_.hovered         = btn_draw_.contains(p);
+    btn_shuffle_.hovered      = btn_shuffle_.contains(p);
+    btn_reset_.hovered        = btn_reset_.contains(p);
+    btn_search_.hovered       = btn_search_.contains(p);
+    btn_view_top_.hovered     = btn_view_top_.contains(p);
+    btn_create_token_.hovered = btn_create_token_.contains(p);
+    btn_play_.hovered         = btn_play_.contains(p);
 }
 
 void HandWindow::handleEvent(const sf::Event& e) {
@@ -218,11 +259,38 @@ void HandWindow::handleEvent(const sf::Event& e) {
     } else if (const auto* mws = e.getIf<sf::Event::MouseWheelScrolled>()) {
         if (mws->wheel == sf::Mouse::Wheel::Vertical)
             pile_viewer_.handleScroll(mws->delta);
+    } else if (const auto* te = e.getIf<sf::Event::TextEntered>()) {
+        if (token_dialog_open_) {
+            uint32_t c = te->unicode;
+            if (c == '\b' || c == 8) {  // backspace
+                if (!token_input_.empty()) token_input_.pop_back();
+            } else if (c >= 32 && c < 127) {  // printable ASCII
+                if (token_input_.size() < 64)
+                    token_input_ += static_cast<char>(c);
+            }
+        }
     } else if (const auto* kp = e.getIf<sf::Event::KeyPressed>()) {
+        if (token_dialog_open_) {
+            if (kp->code == sf::Keyboard::Key::Enter) {
+                if (!token_input_.empty())
+                    state_.createToken(token_input_);
+                token_dialog_open_ = false;
+                token_input_.clear();
+            } else if (kp->code == sf::Keyboard::Key::Escape) {
+                token_dialog_open_ = false;
+                token_input_.clear();
+            }
+            return;  // swallow all keys while dialog is open
+        }
+
         bool ctrl = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl) ||
                     sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RControl);
         if (ctrl) {
-            if (kp->code == sf::Keyboard::Key::Equal || kp->code == sf::Keyboard::Key::Add) {
+            if (kp->code == sf::Keyboard::Key::Z) {
+                state_.history.undo(state_);
+            } else if (kp->code == sf::Keyboard::Key::Y) {
+                state_.history.redo(state_);
+            } else if (kp->code == sf::Keyboard::Key::Equal || kp->code == sf::Keyboard::Key::Add) {
                 ui_scale_ = std::min(3.0f, ui_scale_ * 1.1f);
                 reflow(window.getSize());
             } else if (kp->code == sf::Keyboard::Key::Hyphen || kp->code == sf::Keyboard::Key::Subtract) {
@@ -318,6 +386,8 @@ void HandWindow::render() {
     btn_view_top_.label = state_.deck_top_visible ? "Hide Top" : "View Top";
     btn_view_top_.draw(window, fp);
 
+    btn_create_token_.draw(window, fp);
+
     btn_play_.enabled = (selected_hand_idx_ >= 0);
     btn_play_.draw(window, fp);
 
@@ -383,5 +453,58 @@ void HandWindow::render() {
 
     drawAltPreview(window, fp, window.mapPixelToCoords(sf::Mouse::getPosition(window)));
 
+    // Token creation dialog drawn on top of everything
+    drawTokenDialog(window);
+
     window.display();
+}
+
+void HandWindow::drawTokenDialog(sf::RenderTarget& target) const {
+    if (!token_dialog_open_) return;
+
+    const sf::Font* fp = font_loaded_ ? &font_ : nullptr;
+
+    // Semi-transparent overlay to dim the rest of the UI
+    sf::RectangleShape overlay({w_, h_});
+    overlay.setFillColor(sf::Color(0, 0, 0, 140));
+    target.draw(overlay);
+
+    // Dialog box
+    constexpr float dw = 360.f, dh = 110.f;
+    sf::Vector2f dlg_pos = {(w_ - dw) / 2.f, (h_ - dh) / 2.f};
+    sf::RectangleShape dlg({dw, dh});
+    dlg.setPosition(dlg_pos);
+    dlg.setFillColor(sf::Color(40, 40, 55));
+    dlg.setOutlineColor(sf::Color(140, 180, 255));
+    dlg.setOutlineThickness(2.f);
+    target.draw(dlg);
+
+    if (!fp) return;
+
+    // Title
+    sf::Text title(*fp, "Create Token - type name, press Enter", 13);
+    title.setFillColor(sf::Color(200, 220, 255));
+    title.setPosition({dlg_pos.x + 10.f, dlg_pos.y + 10.f});
+    target.draw(title);
+
+    // Input field background
+    sf::RectangleShape field({dw - 20.f, 32.f});
+    field.setPosition({dlg_pos.x + 10.f, dlg_pos.y + 38.f});
+    field.setFillColor(sf::Color(20, 20, 30));
+    field.setOutlineColor(sf::Color(100, 140, 220));
+    field.setOutlineThickness(1.5f);
+    target.draw(field);
+
+    // Input text with a simple cursor indicator
+    std::string display = token_input_ + '|';
+    sf::Text input(*fp, display, 14);
+    input.setFillColor(sf::Color::White);
+    input.setPosition({dlg_pos.x + 15.f, dlg_pos.y + 44.f});
+    target.draw(input);
+
+    // Hint line
+    sf::Text hint(*fp, "Esc to cancel", 11);
+    hint.setFillColor(sf::Color(160, 160, 180));
+    hint.setPosition({dlg_pos.x + 10.f, dlg_pos.y + 84.f});
+    target.draw(hint);
 }

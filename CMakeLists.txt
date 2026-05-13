@@ -43,9 +43,14 @@ add_executable(mtg-sim
     src/main.cpp
     src/card.cpp
     src/ui.cpp
+    src/pile_viewer.cpp
     src/game_state.cpp
+    src/game_action.cpp
     src/hand_window.cpp
     src/playmat_window.cpp
+    src/playmat_menus.cpp
+    src/playmat_draw.cpp
+    src/playmat_tick.cpp
     src/card_requester.cpp
 )
 

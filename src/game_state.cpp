@@ -58,6 +58,8 @@ bool GameState::loadDeck(const std::string& path)
 void GameState::shuffleDeck()
 {
     std::shuffle(deck.begin(), deck.end(), rng_);
+    // Shuffle is not undoable — clear the redo stack so players can't redo past it.
+    history.clearRedo();
 }
 
 void GameState::drawCard()
@@ -134,12 +136,39 @@ std::vector<Card>& GameState::zoneVec(Zone z)
     return deck; // unreachable
 }
 
+void GameState::createToken(const std::string& name)
+{
+    Card c;
+    c.name       = name;
+    c.is_token   = true;
+    // Tokens have no Scryfall art — the card renderer will show the name as text
+    // on a plain card face.
+    c.art_texture  = nullptr;
+    c.back_texture = nullptr;
+
+    // Place the token near the center of the battlefield, offset slightly
+    // so multiple tokens don't perfectly overlap.
+    float off = static_cast<float>(battlefield.size()) * 115.f;
+    c.position = {220.f + std::fmod(off, 820.f),
+                  420.f + (static_cast<int>(off / 820.f) % 2 == 0 ? 0.f : 100.f)};
+
+    battlefield.push_back(c);
+}
+
 void GameState::moveCard(Zone from, int idx, Zone to, DeckPos deck_pos)
 {
     auto& src = zoneVec(from);
     if (idx < 0 || idx >= static_cast<int>(src.size())) return;
 
     Card c = src[idx];
+
+    // Tokens are removed from the game (not placed in GY/exile/deck/hand).
+    if (c.is_token && (to == Zone::GRAVEYARD || to == Zone::EXILE ||
+                       to == Zone::DECK       || to == Zone::HAND)) {
+        src.erase(src.begin() + idx);
+        return;
+    }
+
     src.erase(src.begin() + idx);
 
     // Commander tax persists across all zone transitions for commander cards.
@@ -163,6 +192,7 @@ int GameState::rollDice(int sides)
 
 void GameState::resetAll()
 {
+    history.clearAll();
     std::vector<Card> all;
     auto collect = [&](std::vector<Card>& zone) {
         for (auto& c : zone) { c.resetState(); all.push_back(c); }
@@ -176,6 +206,7 @@ void GameState::resetAll()
     collect(command_zone);
 
     for (auto& c : all) {
+        if (c.is_token) continue;  // tokens are removed from the game on reset
         if (commander_mode && c.is_commander)
             command_zone.push_back(c);  // commander returns to command zone
         else

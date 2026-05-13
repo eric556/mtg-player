@@ -13,6 +13,7 @@ public:
     // -- Data --------------------------------------------------------------
     std::string  name;
     bool         is_commander = false; // identity field - never cleared by resetState
+    bool         is_token     = false; // tokens are removed instead of going to GY/exile
     bool         tapped     = false;
     bool         face_down  = false;
     int          counters   = 0;
