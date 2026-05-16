@@ -66,6 +66,7 @@ private:
     sf::Vector2f gy_ctr_, exile_ctr_;
 
     sf::Clock    frame_clock_;
+    sf::Vector2f mouse_pos_;
     int          dragged_idx_    = -1;
     sf::Vector2f drag_offset_;
     int          last_click_idx_ = -1;
@@ -88,6 +89,7 @@ private:
     void onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shift);
     void onMouseMove(sf::Vector2f p);
     void onMouseRelease();
+    void onHoverKey(sf::Keyboard::Key key);
     void onMouseScroll(sf::Vector2f p, float delta);
     void applyContextAction(int item);
     void applyZAction(int item);

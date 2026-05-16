@@ -239,6 +239,7 @@ void PlaymatWindow::onMousePress(sf::Vector2f p, sf::Mouse::Button btn, bool shi
 }
 
 void PlaymatWindow::onMouseMove(sf::Vector2f p) {
+    mouse_pos_ = p;
     if (dragged_idx_ >= 0 && dragged_idx_ < static_cast<int>(state_.battlefield.size()))
         state_.battlefield[dragged_idx_].position = p - drag_offset_;
     gy_viewer_.handleMouseMove(p);
@@ -290,9 +291,65 @@ void PlaymatWindow::handleEvent(const sf::Event& e) {
             } else if (kp->code == sf::Keyboard::Key::Y) {
                 state_.history.redo(state_);
             }
+        } else {
+            onHoverKey(kp->code);
         }
     } else if (const auto* rs = e.getIf<sf::Event::Resized>()) {
         reflow(rs->size);
+    }
+}
+
+// ── Hover-key actions (G/E/T/X on hovered battlefield card) ──────────────
+
+void PlaymatWindow::onHoverKey(sf::Keyboard::Key key) {
+    if (gy_viewer_.visible || exile_viewer_.visible || cmd_viewer_.visible) return;
+    if (ctx_menu_.visible || z_menu_.visible || cmd_ctx_menu_.visible) return;
+
+    int idx = cardAt(mouse_pos_);
+    if (idx < 0) return;
+
+    sf::Vector2i src = window.getPosition()
+                     + sf::Vector2i(window.mapCoordsToPixel(state_.battlefield[idx].position));
+    auto flyTo = [&](Card& c, Zone to) {
+        c.is_flying_cross_window = true;
+        c.start_desktop_pos      = src;
+        c.end_desktop_pos        = state_.zoneDesktopCenter(to);
+        c.anim_timer             = 0.f;
+        c.is_animating           = false;
+    };
+
+    switch (key) {
+        case sf::Keyboard::Key::G:
+            state_.history.push(
+                std::make_unique<MoveCardAction>(Zone::BATTLEFIELD, idx, Zone::GRAVEYARD), state_);
+            if (auto* c = state_.lastInZone(Zone::GRAVEYARD)) flyTo(*c, Zone::GRAVEYARD);
+            break;
+        case sf::Keyboard::Key::E:
+            state_.history.push(
+                std::make_unique<MoveCardAction>(Zone::BATTLEFIELD, idx, Zone::EXILE), state_);
+            if (auto* c = state_.lastInZone(Zone::EXILE)) flyTo(*c, Zone::EXILE);
+            break;
+        case sf::Keyboard::Key::T: {
+            bool new_tapped = !state_.battlefield[idx].tapped;
+            state_.history.push(std::make_unique<TapAction>(idx, new_tapped), state_);
+            break;
+        }
+        case sf::Keyboard::Key::X: {
+            Card copy               = state_.battlefield[idx];
+            copy.is_token           = true;
+            copy.is_commander       = false;
+            copy.tapped             = false;
+            copy.selected           = false;
+            copy.face_down          = false;
+            copy.counters           = 0;
+            copy.position           = {w_ / 2.f, h_ / 2.f};
+            copy.is_animating       = false;
+            copy.is_flying_cross_window = false;
+            copy.anim_timer         = 0.f;
+            state_.battlefield.push_back(copy);
+            break;
+        }
+        default: break;
     }
 }
 
