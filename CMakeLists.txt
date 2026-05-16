@@ -33,11 +33,18 @@ FetchContent_Declare(json
     GIT_TAG v3.11.3
     GIT_SHALLOW ON
     EXCLUDE_FROM_ALL)
-FetchContent_Declare(vcam
-    GIT_REPOSITORY https://github.com/mycrl/vcam.git
-    GIT_TAG main
-    GIT_SHALLOW ON)
-FetchContent_MakeAvailable(SFML cpr json vcam)
+option(ENABLE_VCAM "Enable virtual camera output (requires vcam driver installed)" OFF)
+
+if(ENABLE_VCAM)
+    FetchContent_Declare(vcam
+        GIT_REPOSITORY https://github.com/mycrl/vcam.git
+        GIT_TAG main
+        GIT_SHALLOW ON)
+endif()
+FetchContent_MakeAvailable(SFML cpr json)
+if(ENABLE_VCAM)
+    FetchContent_MakeAvailable(vcam)
+endif()
 
 add_executable(mtg-sim
     src/main.cpp
@@ -55,13 +62,18 @@ add_executable(mtg-sim
 )
 
 target_compile_features(mtg-sim PRIVATE cxx_std_20)
-target_link_libraries(mtg-sim PRIVATE 
-    SFML::Graphics 
-    cpr::cpr 
+target_link_libraries(mtg-sim PRIVATE
+    SFML::Graphics
+    cpr::cpr
     nlohmann_json::nlohmann_json
-    vcam-driver
 )
-target_include_directories(mtg-sim PRIVATE src "${vcam_SOURCE_DIR}/driver" "${vcam_SOURCE_DIR}/service")
+target_include_directories(mtg-sim PRIVATE src)
+
+if(ENABLE_VCAM)
+    target_compile_definitions(mtg-sim PRIVATE ENABLE_VCAM)
+    target_link_libraries(mtg-sim PRIVATE vcam-driver)
+    target_include_directories(mtg-sim PRIVATE "${vcam_SOURCE_DIR}/driver" "${vcam_SOURCE_DIR}/service")
+endif()
 
 # Make mtg-sim the default startup project in Visual Studio.
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT mtg-sim)

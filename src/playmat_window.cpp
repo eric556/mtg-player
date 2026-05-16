@@ -34,10 +34,8 @@ PlaymatWindow::PlaymatWindow(GameState& gs) : state_(gs) {
     reflow(window.getSize());
 
     if (vcam_enabled_) {
-        if (!stream_rt_.resize({STREAM_W, STREAM_H}))
+        if (!stream_rt_.resize({STREAM_W, STREAM_H}) || !vcam_.start(STREAM_W, STREAM_H))
             vcam_enabled_ = false;
-        else
-            vcam_.start(STREAM_W, STREAM_H);
     }
 }
 

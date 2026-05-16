@@ -5,18 +5,25 @@ A two-window Magic: The Gathering tabletop simulator built with C++ and SFML 3.
 - **Playmat window** — share this on stream; shows the battlefield, graveyard, exile, and command zone
 - **Hand window** — keep this private; shows your hand, deck controls, and pile browsers
 
-## Virtual Camera (Windows only)
+## Virtual Camera (Windows only, opt-in)
 
-The Playmat window can be streamed directly to a virtual camera (e.g., for Discord, Zoom, or OBS) using the integrated VCam driver.
+The Playmat window can be streamed directly to a virtual camera (e.g., for Discord, Zoom, or OBS) using the integrated VCam driver. Virtual camera support is **disabled by default** — the simulator runs fine without it.
 
-### Setup
-1.  Build the project using the instructions below.
-2.  Open a Terminal/PowerShell as **Administrator**.
-3.  Navigate to the build output directory (e.g., `build/_deps/vcam-build/service/Release/`).
-4.  Run: `regsvr32.exe /i vcam-service.dll`.
-5.  The "MTG Sim Virtual Camera" should now appear as a video device in your streaming software.
+### Building with VCam support
 
-*To unregister the camera later, run `regsvr32.exe /u vcam-service.dll` from an Admin terminal.*
+Pass `-DENABLE_VCAM=ON` at configure time:
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_VCAM=ON
+cmake --build build --config Release
+```
+
+### Registering the virtual camera device
+1.  Open a Terminal/PowerShell as **Administrator**.
+2.  Navigate to `build/_deps/vcam-build/service/Release/`.
+3.  Run: `regsvr32.exe /i vcam-service.dll`.
+4.  The "MTG Sim Virtual Camera" should now appear as a video device in your streaming software.
+
+*To unregister later, run `regsvr32.exe /u vcam-service.dll` from an Admin terminal.*
 
 ## Building
 

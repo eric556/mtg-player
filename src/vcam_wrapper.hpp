@@ -1,7 +1,10 @@
 #pragma once
+#include <SFML/Graphics/Image.hpp>
+
+#ifdef ENABLE_VCAM
+
 #include <vcam.h>
 #include <vector>
-#include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <iostream>
@@ -15,24 +18,24 @@ public:
 
     bool start(unsigned int width, unsigned int height) {
         if (vcam_ && width_ == width && height_ == height) return true;
-        
+
         stop();
-        
+
         width_ = width;
         height_ = height;
-        
+
         vcam_ = vcam_open();
         if (!vcam_) {
             std::cerr << "[VCam] Failed to open VCam driver.\n";
             return false;
         }
-        
+
         if (vcam_start(vcam_, width_, height_) != 0) {
             std::cerr << "[VCam] Failed to start VCam stream.\n";
             stop();
             return false;
         }
-        
+
         nv12_buffer_.resize(width_ * height_ * 3 / 2);
         std::cout << "[VCam] Virtual Camera started at " << width_ << "x" << height_ << "\n";
         return true;
@@ -48,7 +51,7 @@ public:
 
     void pushFrame(const sf::Image& image) {
         if (!vcam_) return;
-        
+
         auto size = image.getSize();
         if (size.x != width_ || size.y != height_) return;
 
@@ -78,7 +81,7 @@ private:
                 if (y % 2 == 0 && x % 2 == 0) {
                     uint8_t u = static_cast<uint8_t>(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
                     uint8_t v = static_cast<uint8_t>(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
-                    
+
                     unsigned int uv_index = (y / 2) * width_ + x;
                     uv_plane[uv_index] = u;
                     uv_plane[uv_index + 1] = v;
@@ -91,3 +94,15 @@ private:
     unsigned int width_, height_;
     std::vector<uint8_t> nv12_buffer_;
 };
+
+#else // ENABLE_VCAM not defined — no-op stub, no DLL dependency
+
+class VCamWrapper {
+public:
+    bool start(unsigned int, unsigned int) { return false; }
+    void stop() {}
+    void pushFrame(const sf::Image&) {}
+    bool isRunning() const { return false; }
+};
+
+#endif // ENABLE_VCAM
