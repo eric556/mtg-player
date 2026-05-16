@@ -143,9 +143,8 @@ void HandWindow::onMousePress(sf::Vector2f p) {
     }
     if (btn_play_.contains(p)) {
         if (selected_hand_idx_ >= 0) {
-            float off = static_cast<float>(state_.battlefield.size()) * 115.f;
-            float px  = 220.f + std::fmod(off, 820.f);
-            float py  = 420.f + (static_cast<int>(off / 820.f) % 2 == 0 ? 0.f : 100.f);
+            float px  = state_.pos_zone_bf.x;
+            float py  = state_.pos_zone_bf.y;
             // Record a MoveCardAction for undo; playCard also sets up animation.
             auto act = std::make_unique<MoveCardAction>(Zone::HAND, selected_hand_idx_, Zone::BATTLEFIELD);
             state_.history.push(std::move(act), state_);
